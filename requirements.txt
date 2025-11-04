@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+gunicorn
+python-dotenv
+sqlalchemy
+psycopg2-binary
+langchain
+langchain-openai
+pinecone
+requests
+httpx

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot Widget Test</title>
+    <link rel="stylesheet" href="chat_widget.css">
+    <!-- favicon to avoid browser requesting /favicon.ico and producing 404s -->
+    <!-- Use absolute path so favicon resolves whether server runs from project root or widget folder -->
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+</head>
+<body>
+
+    <!-- This is what the client's website will see -->
+    <h1>Welcome to the Dental Clinic Website</h1>
+    <p>Some content on the page...</p>
+
+    <!-- Chat Bubble Toggle -->
+    <div class="chat-bubble" id="chat-bubble">
+        <!-- Using an SVG for a clean chat icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-message-square"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+    </div>
+
+    <!-- The Chat Window -->
+    <div class="chat-widget-container" id="chat-widget-container">
+        <!-- Header -->
+        <div class="chat-header">
+            <h3>Robeck Dental</h3>
+            <button class="chat-close-btn" id="chat-close-btn">&times;</button>
+        </div>
+        
+        <!-- Message Area -->
+        <div class="chat-messages" id="chat-messages">
+            <!-- Bot's welcome message will go here -->
+        </div>
+
+        <!-- Typing Indicator -->
+        <div class="typing-indicator" id="typing-indicator">
+            <span></span><span></span><span></span>
+        </div>
+
+        <!-- Input Area -->
+        <form class="chat-input-form" id="chat-input-form">
+            <input type="text" id="chat-input" placeholder="Message..." autocomplete="off">
+            <button type="submit" id="chat-send-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+        </form>
+    </div>
+
+    <script src="chat_widget.js"></script>
+</body>
+</html>

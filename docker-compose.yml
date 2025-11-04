@@ -1,0 +1,56 @@
+
+
+services:
+  # --- 1. PostgreSQL Database Service ---
+  db:
+    image: postgres:15-alpine
+    container_name: chatbot_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    # Mount a volume to persist data, so you don't lose it when the container stops
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    # (Optional) Map the container port 5432 to host port 5432. Removed by default to avoid exposing DB to host.
+    # Uncomment the below lines if you need host access to the DB for debugging/tools.
+    # ports:
+    #   - "5432:5432"
+    # Restart the container if it stops unexpectedly
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- 2. FastAPI Chatbot Application Service ---
+  app:
+    # Use the Dockerfile in the current directory to build the image
+    build: .
+    container_name: chatbot_api
+    # Map the container port 8000 to host port 8000 (where the API is accessed)
+    ports:
+      - "8000:8000"
+    # Ensure the app starts only after the database is ready
+    depends_on:
+      db:
+        condition: service_healthy
+    # Pass environment variables needed for Pinecone/OpenAI/DB connection
+    environment:
+      # Pass the database URL for the application (it uses the service name 'db' as the host)
+      DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      PINECONE_API_KEY: ${PINECONE_API_KEY}
+      PINECONE_ENVIRONMENT: ${PINECONE_ENVIRONMENT}
+    restart: unless-stopped
+    # Mount the source code for local development (optional, but helps with live changes if using uvicorn/reload)
+    # volumes:
+    #   - ./src:/app/src 
+    
+    # Use this command for local dev with autoreload inside the container:
+    # command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload 
+
+# Define the volume where PostgreSQL data will be stored
+volumes:
+  postgres_data:

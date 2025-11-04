@@ -1,0 +1,8 @@
+#.gitignore for project
+# Ignore environment files with secrets
+.env
+__pycache__/
+.pytest_cache/
+*.pyc
+venv/
+env/

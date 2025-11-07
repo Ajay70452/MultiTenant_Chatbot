@@ -1,4 +1,11 @@
-# .github/workflows/deploy.yml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install jq utility
+        run: sudo apt-get update && sudo apt-get install -y jq
+      
+     
 
 name: Deploy to AWS ECS
 
@@ -43,11 +50,12 @@ jobs:
           docker push $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      # 5. Download the existing ECS task definition
+      # 5. Download the existing ECS task definition (WITH FILTERING)
       - name: Download existing task definition
         run: |
-          aws ecs describe-task-definition --task-definition ${{ secrets.ECS_TASK_DEFINITION_FAMILY }} --query taskDefinition > task-definition.json
-
+          aws ecs describe-task-definition --task-definition ${{ secrets.ECS_TASK_DEFINITION_FAMILY }} \
+          --query taskDefinition \
+          | jq 'del(.taskDefinitionArn) | del(.requiresAttributes) | del(.revision) | del(.status) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)' > task-definition.json
       # 6. Fill in the new image ID in the task definition
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def

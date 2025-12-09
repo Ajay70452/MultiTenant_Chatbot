@@ -1,8 +1,12 @@
 import datetime
 import logging
+from typing import Optional
+from uuid import UUID
+
 from sqlalchemy.orm import Session
-from src.models.models import Conversation, ChatLog
 from langchain_core.messages import HumanMessage, AIMessage
+
+from src.models.models import Conversation, ChatLog, PracticeProfile
 from src.services.data_export import simple_data_exporter
 
 logger = logging.getLogger(__name__)
@@ -96,3 +100,98 @@ def log_message(db: Session, conversation_id: str, sender: str, message: str):
     )
     db.add(log)
     db.commit()
+
+
+# =============================================================================
+# Practice Profile Functions (for Clinical Advisor)
+# =============================================================================
+
+def get_practice_profile(db: Session, client_id: UUID) -> Optional[dict]:
+    """
+    Load the practice profile JSON for a given client.
+
+    This retrieves the "Brain" data that contains the doctor's clinical philosophy,
+    treatment preferences, and other practice-specific information used by the
+    Clinical Advisor agent.
+
+    Args:
+        db: Database session
+        client_id: The UUID of the client whose profile to load
+
+    Returns:
+        The profile_json dict if found, None if no profile exists for this client
+    """
+    profile = db.query(PracticeProfile).filter(
+        PracticeProfile.practice_id == client_id
+    ).first()
+
+    if not profile:
+        logger.warning(f"No practice profile found for client: {client_id}")
+        return None
+
+    logger.info(f"Loaded practice profile for client: {client_id}")
+    return profile.profile_json
+
+
+def create_or_update_practice_profile(
+    db: Session,
+    client_id: UUID,
+    profile_json: dict
+) -> PracticeProfile:
+    """
+    Create or update the practice profile for a client.
+
+    Args:
+        db: Database session
+        client_id: The UUID of the client
+        profile_json: The practice profile data to store
+
+    Returns:
+        The created or updated PracticeProfile object
+    """
+    profile = db.query(PracticeProfile).filter(
+        PracticeProfile.practice_id == client_id
+    ).first()
+
+    if profile:
+        # Update existing profile
+        profile.profile_json = profile_json
+        profile.updated_at = datetime.datetime.utcnow()
+        logger.info(f"Updated practice profile for client: {client_id}")
+    else:
+        # Create new profile
+        profile = PracticeProfile(
+            practice_id=client_id,
+            profile_json=profile_json
+        )
+        db.add(profile)
+        logger.info(f"Created practice profile for client: {client_id}")
+
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def delete_practice_profile(db: Session, client_id: UUID) -> bool:
+    """
+    Delete the practice profile for a client.
+
+    Args:
+        db: Database session
+        client_id: The UUID of the client whose profile to delete
+
+    Returns:
+        True if a profile was deleted, False if no profile existed
+    """
+    profile = db.query(PracticeProfile).filter(
+        PracticeProfile.practice_id == client_id
+    ).first()
+
+    if not profile:
+        logger.warning(f"No practice profile to delete for client: {client_id}")
+        return False
+
+    db.delete(profile)
+    db.commit()
+    logger.info(f"Deleted practice profile for client: {client_id}")
+    return True

@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, Column, String, DateTime, JSON, ForeignKey, BigInteger, Integer, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import relationship
 import uuid
 import datetime
 
@@ -14,6 +15,10 @@ class Client(Base):
     clinic_name = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     lead_webhook_url = Column(String, nullable=True)
+    access_token = Column(String(64), nullable=True, unique=True, index=True)
+
+    # One-to-one relationship with PracticeProfile
+    profile = relationship("PracticeProfile", back_populates="client", uselist=False)
 
 class Conversation(Base):
     __tablename__ = 'conversations'
@@ -63,3 +68,17 @@ class WebhookSuccess(Base):
     response_status_code = Column(Integer, nullable=True)
     response_text = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class PracticeProfile(Base):
+    __tablename__ = 'practice_profiles'
+
+    # The ID is also the foreign key, enforcing a one-to-one relationship
+    practice_id = Column(UUID(as_uuid=True), ForeignKey('clients.client_id'), primary_key=True)
+    
+    # The "Brain" itself, using the efficient JSONB type
+    profile_json = Column(JSONB, nullable=False, default={})
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    
+    client = relationship("Client", back_populates="profile")

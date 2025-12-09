@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from src.api.chat import router as chat_router
 from src.api.admin import admin_router
+from src.api.clinical import router as clinical_router
 from fastapi.middleware.cors import CORSMiddleware
 from src.core.config import ALLOWED_ORIGINS
 from src.core.logging_config import setup_logging
 from fastapi.responses import FileResponse
+from src.models.models import Conversation
 
 setup_logging()
 
@@ -19,7 +21,8 @@ app.add_middleware(
 )
 
 app.include_router(chat_router, prefix="/api", tags=["Chat"])
-app.include_router(admin_router, prefix="/api/admin", tags=["Admin"]) 
+app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
+app.include_router(clinical_router, prefix="/api/clinical", tags=["Clinical Advisor"]) 
 
 @app.get("/")
 def read_root():

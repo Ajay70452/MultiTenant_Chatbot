@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical Advisor - Practice Brain</title>
+    <link rel="stylesheet" href="clinical.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a4 4 0 0 0-4 4c0 1.5.8 2.8 2 3.5V11a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1V9.5c1.2-.7 2-2 2-3.5a4 4 0 0 0-4-4z"/>
+                        <path d="M12 12v10"/>
+                        <path d="M8 17h8"/>
+                    </svg>
+                </div>
+                <div class="header-title">
+                    <h1>Clinical Advisor</h1>
+                    <span class="subtitle">Practice Brain Assistant</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="connection-status" id="connection-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Auth Error Banner (hidden by default) -->
+        <div class="auth-error-banner" id="auth-error-banner" style="display: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span id="auth-error-message">Authentication required. Please check your access token.</span>
+        </div>
+
+        <!-- Main Chat Area -->
+        <main class="chat-main">
+            <!-- Messages Container -->
+            <div class="messages-container" id="messages-container">
+                <!-- Welcome message will be inserted by JS -->
+            </div>
+
+            <!-- Typing Indicator -->
+            <div class="typing-indicator" id="typing-indicator">
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <span class="typing-text">Clinical Advisor is thinking...</span>
+            </div>
+        </main>
+
+        <!-- Image Preview Area (shown when image is attached) -->
+        <div class="image-preview-area" id="image-preview-area" style="display: none;">
+            <div class="image-preview-header">
+                <span>Attached Image</span>
+                <button class="remove-image-btn" id="remove-image-btn" title="Remove image">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="image-preview-content">
+                <img id="image-preview" src="" alt="Attached image preview">
+                <span class="image-name" id="image-name"></span>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <footer class="input-area">
+            <form class="input-form" id="input-form">
+                <!-- Image Upload Button -->
+                <button type="button" class="attach-btn" id="attach-btn" title="Attach X-ray or clinical image">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                        <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                </button>
+                <input type="file" id="image-input" accept="image/*" style="display: none;">
+
+                <!-- Text Input -->
+                <textarea
+                    id="message-input"
+                    placeholder="Ask a clinical question... (Shift+Enter for new line)"
+                    rows="1"
+                    autocomplete="off"
+                ></textarea>
+
+                <!-- Send Button -->
+                <button type="submit" class="send-btn" id="send-btn" title="Send message">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </form>
+            <div class="input-footer">
+                <span class="disclaimer">AI responses are for reference only. Always verify with clinical judgment.</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Response Metadata Modal (for viewing details) -->
+    <div class="metadata-modal" id="metadata-modal" style="display: none;">
+        <div class="metadata-content">
+            <div class="metadata-header">
+                <h3>Response Details</h3>
+                <button class="close-modal-btn" id="close-modal-btn">&times;</button>
+            </div>
+            <div class="metadata-body" id="metadata-body">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <script src="clinical.js"></script>
+</body>
+</html>

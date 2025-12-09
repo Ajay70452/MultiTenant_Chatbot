@@ -1,3 +1,18 @@
+"""
+Patient Concierge API Endpoint (Door 1)
+
+This module provides the patient-facing appointment booking chatbot endpoint.
+
+Key characteristics:
+- STATEFUL: Uses state machine (GREETING -> BOOKING_APPOINTMENT -> CLOSING)
+- Uses Pinecone RAG for knowledge base context
+- Persists conversation state and history in database
+- Triggers webhooks on appointment finalization
+
+For the doctor-facing Clinical Advisor (Door 2), see src/api/clinical.py
+which is STATELESS and uses practice profiles instead of RAG.
+"""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from src.schemas.chat import ChatRequest, ChatResponse
@@ -8,10 +23,24 @@ from src.core import state_manager, rag_engine, agent
 from src.core.db import get_db
 from src.services import webhook_routing_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def handle_chat_message(request: ChatRequest, db: Session = Depends(get_db)):
+    """
+    Handle a patient chat message (Door 1 - Patient Concierge).
+
+    This endpoint uses a STATE MACHINE for appointment booking:
+    - GREETING: Initial greeting, transition to booking when user wants appointment
+    - BOOKING_APPOINTMENT: Collect patient details (name, phone, email, date, time)
+    - ANSWERING_QUESTION: Handle side questions, then return to previous stage
+    - CLOSING: Finalize appointment and trigger webhook
+
+    Contrast with /api/clinical/chat which is STATELESS.
+    """
     conversation_id = request.conversation_id or uuid.uuid4()
 
     conversation = state_manager.load_or_create_conversation(db, conversation_id, request.client_id)
@@ -30,8 +59,6 @@ async def handle_chat_message(request: ChatRequest, db: Session = Depends(get_db
         context=context
     )
 
-    logger = logging.getLogger(__name__)
-    logger = logging.getLogger(__name__)
     logger.info(
         f"Agent Output for Stage '{conversation.current_stage}': {agent_output}",
         extra={'conversation_id': str(conversation_id), 'client_id': request.client_id, 'confidence_score': agent_output.get('confidence_score')}

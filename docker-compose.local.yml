@@ -1,0 +1,28 @@
+version: '3.8'
+
+# Local development docker-compose for running database migrations
+# Usage:
+#   docker-compose -f docker-compose.local.yml up -d
+#   Then run: alembic upgrade head
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: dental_chatbot_local_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: localdevpassword
+      POSTGRES_DB: dental_chatbot_local
+    volumes:
+      - postgres_local_data:/var/lib/postgresql/data/
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dental_chatbot_local || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_local_data:

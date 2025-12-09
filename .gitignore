@@ -7,4 +7,6 @@ __pycache__/
 venv/
 env/
 docs
-.env.local
+*.env
+*.local
+.claude

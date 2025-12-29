@@ -43,6 +43,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       PINECONE_API_KEY: ${PINECONE_API_KEY}
       PINECONE_ENVIRONMENT: ${PINECONE_ENVIRONMENT}
+      PINECONE_INDEX_NAME: ${PINECONE_INDEX_NAME:-robeck-dental-v2}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      SECRET_KEY: ${SECRET_KEY}
     restart: unless-stopped
     # Mount the source code for local development (optional, but helps with live changes if using uvicorn/reload)
     # volumes:

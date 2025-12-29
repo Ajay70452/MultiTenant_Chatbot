@@ -2,14 +2,29 @@
  * Clinical Advisor Frontend - Practice Brain
  *
  * This micro-app provides a doctor-facing interface for the Clinical Advisor.
- * It reads authentication from URL parameters and supports image uploads.
+ * It uses secure token exchange for authentication.
  *
  * URL Parameters:
- *   - token: The X-Client-Token for authentication (required)
+ *   - token: One-time token for authentication (exchanged immediately for session token)
+ *   - permanent_token: Permanent access token for direct authentication (not exchanged)
  *   - api: Optional API base URL override (defaults to relative /api)
  *
- * Example URL:
- *   https://yourapp.com/clinical-ui/?token=abc123def456
+ * Security Flow (One-time token):
+ *   1. User arrives with ?token=xxx in URL
+ *   2. Frontend immediately exchanges token for session token via /auth/exchange
+ *   3. Session token is stored in sessionStorage (not URL)
+ *   4. URL is cleaned to remove token (prevents exposure in history/logs)
+ *   5. All subsequent requests use session token from sessionStorage
+ *
+ * Security Flow (Permanent token):
+ *   1. User arrives with ?permanent_token=xxx in URL
+ *   2. Token is used directly for authentication (no exchange)
+ *   3. URL is cleaned to remove token (prevents exposure in history/logs)
+ *   4. All subsequent requests use the permanent token
+ *
+ * Example URLs:
+ *   https://yourapp.com/clinical-ui/?token=abc123def456 (one-time)
+ *   https://yourapp.com/clinical-ui/?permanent_token=secret-token-123 (permanent)
  */
 
 (function() {
@@ -21,10 +36,17 @@
 
     const CONFIG = {
         // API endpoint - can be overridden via URL parameter
-        apiBaseUrl: getUrlParam('api') || '/api/clinical',
+        apiBaseUrl: getUrlParam('api') || 'https://api.methodpro.com/api/clinical',
 
-        // Auth token from URL
-        authToken: getUrlParam('token'),
+        // One-time URL token (will be exchanged and cleared)
+        urlToken: getUrlParam('token'),
+
+        // Permanent access token (for direct access without exchange)
+        permanentToken: getUrlParam('permanent_token'),
+
+        // Session token storage key
+        sessionTokenKey: 'clinical_session_token',
+        clientInfoKey: 'clinical_client_info',
 
         // Maximum image size (10MB)
         maxImageSize: 10 * 1024 * 1024,
@@ -41,6 +63,12 @@
     // ==========================================================================
 
     const state = {
+        // Session token (obtained via secure exchange, stored in sessionStorage)
+        sessionToken: null,
+
+        // Client info from authentication
+        clientInfo: null,
+
         // Conversation history (maintained client-side since endpoint is stateless)
         conversationHistory: [],
 
@@ -125,43 +153,243 @@
         elements.authErrorBanner.style.display = 'none';
     }
 
-    async function checkConnection() {
-        if (!CONFIG.authToken) {
-            showAuthError('No access token provided. Please include ?token=YOUR_TOKEN in the URL.');
+    /**
+     * Clear the token from URL to prevent exposure in browser history/logs.
+     * Uses replaceState to avoid adding to history.
+     */
+    function clearTokenFromUrl() {
+        const url = new URL(window.location.href);
+        let cleared = false;
+        if (url.searchParams.has('token')) {
+            url.searchParams.delete('token');
+            cleared = true;
+        }
+        if (url.searchParams.has('permanent_token')) {
+            url.searchParams.delete('permanent_token');
+            cleared = true;
+        }
+        if (cleared) {
+            window.history.replaceState({}, document.title, url.toString());
+            console.log('Token cleared from URL for security');
+        }
+    }
+
+    /**
+     * Store session credentials securely in sessionStorage.
+     * sessionStorage is preferred over localStorage as it clears on tab close.
+     */
+    function storeSessionCredentials(sessionToken, clientInfo) {
+        try {
+            sessionStorage.setItem(CONFIG.sessionTokenKey, sessionToken);
+            sessionStorage.setItem(CONFIG.clientInfoKey, JSON.stringify(clientInfo));
+            state.sessionToken = sessionToken;
+            state.clientInfo = clientInfo;
+        } catch (e) {
+            console.error('Failed to store session credentials:', e);
+        }
+    }
+
+    /**
+     * Retrieve session credentials from sessionStorage.
+     */
+    function getStoredSessionCredentials() {
+        try {
+            const sessionToken = sessionStorage.getItem(CONFIG.sessionTokenKey);
+            const clientInfoStr = sessionStorage.getItem(CONFIG.clientInfoKey);
+            if (sessionToken && clientInfoStr) {
+                return {
+                    sessionToken,
+                    clientInfo: JSON.parse(clientInfoStr)
+                };
+            }
+        } catch (e) {
+            console.error('Failed to retrieve session credentials:', e);
+        }
+        return null;
+    }
+
+    /**
+     * Clear session credentials (logout).
+     */
+    function clearSessionCredentials() {
+        try {
+            sessionStorage.removeItem(CONFIG.sessionTokenKey);
+            sessionStorage.removeItem(CONFIG.clientInfoKey);
+            state.sessionToken = null;
+            state.clientInfo = null;
+        } catch (e) {
+            console.error('Failed to clear session credentials:', e);
+        }
+    }
+
+    /**
+     * Exchange URL token for session token.
+     * This is the secure way to authenticate - the URL token is one-time use
+     * and the session token is stored in sessionStorage, not the URL.
+     */
+    async function exchangeTokenForSession(urlToken) {
+        try {
+            const response = await fetch(`${CONFIG.apiBaseUrl}/auth/exchange`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ token: urlToken }),
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                return {
+                    sessionToken: data.session_token,
+                    clientInfo: {
+                        clientId: data.client_id,
+                        clinicName: data.clinic_name,
+                        expiresInHours: data.expires_in_hours
+                    }
+                };
+            } else if (response.status === 401) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || 'Invalid or expired token');
+            } else {
+                throw new Error(`Token exchange failed: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Token exchange failed:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initialize authentication.
+     * Priority:
+     * 1. Check for existing session in sessionStorage
+     * 2. If URL has token, exchange it for session token
+     * 3. If neither, show auth error
+     */
+    async function initializeAuth() {
+        updateConnectionStatus('connecting', 'Authenticating...');
+
+        // Check for permanent token (direct access token)
+        if (CONFIG.permanentToken) {
+            state.sessionToken = CONFIG.permanentToken;
+            console.log('Using permanent access token from URL');
+
+            // Clear token from URL for security
+            clearTokenFromUrl();
+
+            // Verify token is valid
+            const isValid = await verifySession();
+            if (isValid) {
+                return true;
+            }
+            showAuthError('Invalid permanent access token');
             return false;
         }
 
-        updateConnectionStatus('connecting', 'Connecting...');
+        // Check for existing session
+        const storedCreds = getStoredSessionCredentials();
+        if (storedCreds) {
+            state.sessionToken = storedCreds.sessionToken;
+            state.clientInfo = storedCreds.clientInfo;
+            console.log('Using existing session from storage');
+
+            // Clear any token from URL (in case of page reload with token)
+            clearTokenFromUrl();
+
+            // Verify session is still valid
+            const isValid = await verifySession();
+            if (isValid) {
+                return true;
+            }
+            // Session expired, clear and try URL token
+            clearSessionCredentials();
+        }
+
+        // Check for URL token
+        if (CONFIG.urlToken) {
+            try {
+                const credentials = await exchangeTokenForSession(CONFIG.urlToken);
+                state.sessionToken = credentials.sessionToken;
+                state.clientInfo = credentials.clientInfo;
+                storeSessionCredentials(credentials.sessionToken, credentials.clientInfo);
+
+                // IMPORTANT: Clear token from URL immediately after exchange
+                clearTokenFromUrl();
+
+                console.log('Token exchanged successfully, session established');
+                console.log('Session token received:', credentials.sessionToken ? 'YES' : 'NO');
+                console.log('State after setting:', state.sessionToken ? 'Token set' : 'Token NOT set');
+
+                // Verify session and update connection status
+                console.log('Calling verifySession...');
+                const isValid = await verifySession();
+                console.log('verifySession returned:', isValid);
+                return isValid;
+            } catch (error) {
+                clearTokenFromUrl(); // Clear even on failure to prevent retry loops
+                showAuthError(`Authentication failed: ${error.message}`);
+                return false;
+            }
+        }
+
+        // No session and no URL token
+        showAuthError('No access token provided. Please use an authorized link to access this application.');
+        return false;
+    }
+
+    /**
+     * Verify the current session is still valid by calling the profile endpoint.
+     */
+    async function verifySession() {
+        console.log('verifySession called, token exists:', !!state.sessionToken);
+        if (!state.sessionToken) {
+            console.log('No session token, returning false');
+            return false;
+        }
 
         try {
+            console.log('Fetching /profile...');
             const response = await fetch(`${CONFIG.apiBaseUrl}/profile`, {
                 method: 'GET',
                 headers: {
-                    'X-Client-Token': CONFIG.authToken,
+                    'X-Client-Token': state.sessionToken,
                 },
             });
 
             if (response.ok) {
                 const data = await response.json();
                 hideAuthError();
-                updateConnectionStatus('connected', `Connected: ${data.clinic_name || 'Practice'}`);
+                updateConnectionStatus('connected', `Connected: ${data.clinic_name || state.clientInfo?.clinicName || 'Practice'}`);
 
-                if (!data.has_profile) {
+                if (!data.has_profile || !data.profile_configured) {
                     appendSystemMessage('Note: Your practice profile is not yet configured. Responses will use general clinical guidelines.');
                 }
                 return true;
             } else if (response.status === 401) {
-                showAuthError('Invalid or expired access token. Please contact support.');
+                // Session expired
+                clearSessionCredentials();
                 return false;
             } else {
                 showAuthError(`Connection failed: ${response.statusText}`);
                 return false;
             }
         } catch (error) {
-            console.error('Connection check failed:', error);
+            console.error('Session verification failed:', error);
             showAuthError('Unable to connect to the server. Please check your network connection.');
             return false;
         }
+    }
+
+    /**
+     * Get the current authentication token for API requests.
+     */
+    function getAuthToken() {
+        return state.sessionToken;
+    }
+
+    // Legacy function for backwards compatibility
+    async function checkConnection() {
+        return await initializeAuth();
     }
 
     // ==========================================================================
@@ -376,6 +604,13 @@
             return;
         }
 
+        const authToken = getAuthToken();
+        if (!authToken) {
+            appendSystemMessage('Session expired. Please refresh the page to re-authenticate.');
+            clearSessionCredentials();
+            return;
+        }
+
         setLoading(true);
 
         // Show user message
@@ -400,13 +635,14 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Client-Token': CONFIG.authToken,
+                    'X-Client-Token': authToken,
                 },
                 body: JSON.stringify(payload),
             });
 
             if (!response.ok) {
                 if (response.status === 401) {
+                    clearSessionCredentials();
                     showAuthError('Session expired. Please refresh and re-authenticate.');
                     throw new Error('Authentication failed');
                 } else if (response.status === 404) {

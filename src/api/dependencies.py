@@ -3,10 +3,19 @@ Authentication dependencies for securing API routes.
 
 This module provides token-based authentication for the Clinical Advisor
 and other protected endpoints using the X-Client-Token header.
+
+Security Features:
+- One-time URL token exchange for session tokens
+- Session tokens stored in memory (not exposed in URLs)
+- Token expiration and rotation
+- Constant-time comparison to prevent timing attacks
 """
 
 import logging
-from typing import Optional
+import secrets
+import hashlib
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Tuple
 from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, status
@@ -16,6 +25,168 @@ from src.core.db import get_db
 from src.models.models import Client
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Session Token Management (In-Memory Store)
+# =============================================================================
+
+# In-memory store for session tokens: {session_token: (client_id, expiry_datetime)}
+# In production, consider using Redis for distributed deployments
+_session_store: Dict[str, Tuple[UUID, datetime]] = {}
+
+# Session token expiry time (4 hours)
+SESSION_TOKEN_EXPIRY_HOURS = 4
+
+# One-time token expiry (5 minutes - for URL token exchange)
+ONE_TIME_TOKEN_EXPIRY_MINUTES = 5
+
+# In-memory store for one-time tokens: {hashed_token: (client_id, expiry_datetime, used)}
+_one_time_tokens: Dict[str, Tuple[UUID, datetime, bool]] = {}
+
+
+def _cleanup_expired_sessions():
+    """Remove expired sessions from the store."""
+    now = datetime.utcnow()
+    expired = [token for token, (_, expiry) in _session_store.items() if expiry < now]
+    for token in expired:
+        del _session_store[token]
+
+
+def _cleanup_expired_one_time_tokens():
+    """Remove expired one-time tokens from the store."""
+    now = datetime.utcnow()
+    expired = [token for token, (_, expiry, _) in _one_time_tokens.items() if expiry < now]
+    for token in expired:
+        del _one_time_tokens[token]
+
+
+def generate_session_token(client_id: UUID) -> str:
+    """
+    Generate a new session token for a client.
+
+    Args:
+        client_id: The UUID of the authenticated client
+
+    Returns:
+        A secure random session token
+    """
+    _cleanup_expired_sessions()
+
+    # Generate a secure random token
+    session_token = secrets.token_urlsafe(32)
+    expiry = datetime.utcnow() + timedelta(hours=SESSION_TOKEN_EXPIRY_HOURS)
+
+    _session_store[session_token] = (client_id, expiry)
+
+    logger.info(f"Generated session token for client: {client_id}")
+    return session_token
+
+
+def validate_session_token(session_token: str) -> Optional[UUID]:
+    """
+    Validate a session token and return the associated client_id.
+
+    Args:
+        session_token: The session token to validate
+
+    Returns:
+        The client_id if valid, None otherwise
+    """
+    _cleanup_expired_sessions()
+
+    if session_token not in _session_store:
+        return None
+
+    client_id, expiry = _session_store[session_token]
+
+    if datetime.utcnow() > expiry:
+        del _session_store[session_token]
+        return None
+
+    return client_id
+
+
+def revoke_session_token(session_token: str) -> bool:
+    """
+    Revoke a session token (logout).
+
+    Args:
+        session_token: The session token to revoke
+
+    Returns:
+        True if token was revoked, False if not found
+    """
+    if session_token in _session_store:
+        del _session_store[session_token]
+        return True
+    return False
+
+
+def generate_one_time_url_token(client_id: UUID) -> str:
+    """
+    Generate a one-time token for URL-based authentication.
+    This token can only be exchanged once for a session token.
+
+    Args:
+        client_id: The UUID of the client
+
+    Returns:
+        A one-time URL token
+    """
+    _cleanup_expired_one_time_tokens()
+
+    # Generate token
+    token = secrets.token_urlsafe(32)
+    # Store hash of token (so even if store is compromised, tokens are safe)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    expiry = datetime.utcnow() + timedelta(minutes=ONE_TIME_TOKEN_EXPIRY_MINUTES)
+
+    _one_time_tokens[token_hash] = (client_id, expiry, False)
+
+    return token
+
+
+def exchange_one_time_token(one_time_token: str) -> Optional[Tuple[UUID, str]]:
+    """
+    Exchange a one-time URL token for a session token.
+    The one-time token is invalidated after use.
+
+    Args:
+        one_time_token: The one-time token from the URL
+
+    Returns:
+        Tuple of (client_id, session_token) if valid, None otherwise
+    """
+    _cleanup_expired_one_time_tokens()
+
+    token_hash = hashlib.sha256(one_time_token.encode()).hexdigest()
+
+    if token_hash not in _one_time_tokens:
+        logger.warning("One-time token not found or expired")
+        return None
+
+    client_id, expiry, used = _one_time_tokens[token_hash]
+
+    # Check if already used
+    if used:
+        logger.warning(f"Attempted reuse of one-time token for client: {client_id}")
+        # Remove the token entirely on reuse attempt (potential attack)
+        del _one_time_tokens[token_hash]
+        return None
+
+    # Check expiry
+    if datetime.utcnow() > expiry:
+        del _one_time_tokens[token_hash]
+        return None
+
+    # Mark as used
+    _one_time_tokens[token_hash] = (client_id, expiry, True)
+
+    # Generate session token
+    session_token = generate_session_token(client_id)
+
+    logger.info(f"One-time token exchanged for session token, client: {client_id}")
+    return (client_id, session_token)
 
 
 def verify_client_token(db: Session, client_id: UUID, token: str) -> bool:
@@ -71,10 +242,12 @@ async def require_client_token(
     """
     FastAPI dependency that requires a valid X-Client-Token header.
 
-    This dependency:
-    1. Extracts the token from the X-Client-Token header
-    2. Looks up the client by their access token
-    3. Returns the authenticated Client object
+    This dependency supports two authentication methods:
+    1. Session token (preferred) - obtained via /auth/exchange endpoint
+    2. Direct access token (legacy/fallback) - stored in database
+
+    The function first checks if the token is a valid session token,
+    then falls back to checking the database access token.
 
     Usage:
         @router.post("/protected-endpoint")
@@ -99,16 +272,25 @@ async def require_client_token(
             detail="Missing X-Client-Token header"
         )
 
+    # First, try to validate as a session token
+    client_id = validate_session_token(x_client_token)
+    if client_id:
+        client = db.query(Client).filter(Client.client_id == client_id).first()
+        if client:
+            logger.info(f"Authenticated via session token: {client.client_id} ({client.clinic_name})")
+            return client
+
+    # Fall back to direct access token lookup (legacy support)
     client = get_client_by_token(db, x_client_token)
 
     if not client:
-        logger.warning(f"Invalid or unknown access token attempted")
+        logger.warning("Invalid or unknown access token attempted")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired access token"
         )
 
-    logger.info(f"Authenticated client: {client.client_id} ({client.clinic_name})")
+    logger.info(f"Authenticated via access token: {client.client_id} ({client.clinic_name})")
     return client
 
 

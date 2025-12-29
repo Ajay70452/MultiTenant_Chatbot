@@ -1,0 +1,53 @@
+# Docker ignore file - excludes unnecessary files from Docker build context
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Development files
+.git/
+.gitignore
+*.md
+!README.md
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary/local files
+*.log
+*.sqlite
+*.db
+
+# DO NOT ignore .env - we handle it via docker-compose environment variables
+# But DO ignore local override files
+.env.local
+*.local
+
+# Test and development scripts
+test_*.py
+*_test.py
+tests/
+
+# Documentation
+docs/
+
+# Development compose file
+docker-compose.local.yml

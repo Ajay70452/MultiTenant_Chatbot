@@ -7,7 +7,15 @@ import datetime
 
 from src.core.config import DATABASE_URL
 
-Base = declarative_base()
+# 1. Create the engine
+engine = create_engine(DATABASE_URL) 
+
+# 2. Create the SessionLocal object (The one the script is trying to import)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# 3. Define the Base class (if it's not already defined elsewhere)
+from sqlalchemy.orm import declarative_base
+Base = declarative_base() 
 
 class Client(Base):
     __tablename__ = 'clients'
@@ -29,6 +37,12 @@ class Conversation(Base):
     last_activity_at = Column(DateTime, default=datetime.datetime.utcnow)
     is_finalized = Column(Boolean, default=False, nullable=False)
     finalized_at = Column(DateTime, nullable=True)
+
+    # Reporting columns for AI Chat Dashboard
+    lead_captured = Column(Boolean, default=False, nullable=False)
+    delivery_status = Column(String(50), nullable=True)
+    topic_tag = Column(String(100), nullable=True)
+    is_after_hours = Column(Boolean, default=False, nullable=False)
 
 class ChatLog(Base):
     __tablename__ = 'chat_logs'

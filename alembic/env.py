@@ -62,10 +62,24 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # Get the configuration section
+    configuration = config.get_section(config.config_ini_section, {})
+
+    # Add connection arguments for tunnel/SSH connections
+    # These settings help with timeout issues when using SSH tunnels
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={
+            "connect_timeout": 60,  # Increased timeout for SSH tunnel (seconds)
+            "keepalives": 1,  # Enable TCP keepalives
+            "keepalives_idle": 30,  # Seconds before sending keepalive probes
+            "keepalives_interval": 10,  # Seconds between keepalive probes
+            "keepalives_count": 5,  # Number of keepalives before connection considered dead
+            "options": "-c statement_timeout=300000"  # 5 minutes statement timeout (milliseconds)
+        },
+        pool_pre_ping=True,  # Verify connections before using them
     )
 
     with connectable.connect() as connection:

@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const typingIndicator = document.getElementById('typing-indicator');
 
     // --- API and Client Configuration ---
-    const API_ENDPOINT = "http://127.0.0.1:8000/api/chat"; // Your FastAPI backend URL
+    const API_ENDPOINT = "https://api.methodpro.com/api/chat"; // Your FastAPI backend URL
     const CLIENT_ID = "443f5716-27d3-463a-9377-33a666f5ad88"; // This will eventually be dynamic
 
     // --- State Management ---

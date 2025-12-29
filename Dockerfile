@@ -36,6 +36,6 @@ EXPOSE 8000
 # Command to run the application (Uvicorn)
 # Use gunicorn with uvicorn workers in a production environment for better stability/performance
 # The command below is a standard production run command.
-CMD ["gunicorn", "src.main:app", "--bind", "0.0.0.0:8000", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker"]
+CMD ["gunicorn", "src.main:app", "--bind", "0.0.0.0:8000", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker"]
 # Alternatively, for simple testing/reload:
 # CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

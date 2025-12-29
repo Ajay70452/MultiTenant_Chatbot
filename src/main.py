@@ -1,12 +1,16 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from src.api.chat import router as chat_router
 from src.api.admin import admin_router
 from src.api.clinical import router as clinical_router
+from src.api.reporting import router as reporting_router
 from fastapi.middleware.cors import CORSMiddleware
 from src.core.config import ALLOWED_ORIGINS
 from src.core.logging_config import setup_logging
 from fastapi.responses import FileResponse
 from src.models.models import Conversation
+import os
+from pathlib import Path
 
 setup_logging()
 
@@ -22,7 +26,15 @@ app.add_middleware(
 
 app.include_router(chat_router, prefix="/api", tags=["Chat"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
-app.include_router(clinical_router, prefix="/api/clinical", tags=["Clinical Advisor"]) 
+app.include_router(clinical_router, prefix="/api/clinical", tags=["Clinical Advisor"])
+app.include_router(reporting_router, prefix="/api/ahsuite", tags=["Reporting Dashboard"])
+
+# Mount static files for frontends
+BASE_DIR = Path(__file__).parent.parent
+FRONTENDS_DIR = BASE_DIR / "frontends"
+
+if FRONTENDS_DIR.exists():
+    app.mount("/frontends", StaticFiles(directory=str(FRONTENDS_DIR)), name="frontends")
 
 @app.get("/")
 def read_root():
@@ -68,7 +80,7 @@ def get_status():
         db.execute("SELECT 1")
         db_status = "ok"
     except Exception as e:
-        db_status = f"error: {e}"
+        db_status = f"error: {e}" 
     finally:
         db.close()
     return {"api_status": "ok", "db_status": db_status}

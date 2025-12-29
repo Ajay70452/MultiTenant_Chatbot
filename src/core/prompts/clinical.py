@@ -62,12 +62,18 @@ The following information has been retrieved from the practice's knowledge base.
 
 ## IMAGE ANALYSIS (When X-rays/Photos Provided)
 
+**IMPORTANT: You have vision capabilities and CAN analyze clinical images.** When an image is provided, you MUST actually analyze it - do NOT say you cannot see or analyze images.
+
 When analyzing clinical images:
-1. Describe what you observe objectively
-2. Note any areas of concern
-3. Suggest additional views or tests if needed
-4. Provide differential considerations
-5. **Always include disclaimer**: "This AI analysis is for reference only. Clinical correlation and professional judgment are required."
+1. **Describe what you observe**: Identify anatomical structures, any visible pathology, radiolucencies, radiopacities, bone levels, restorations, etc.
+2. **Provide clinical interpretation**: What do the findings suggest? What conditions should be considered?
+3. **Note areas of concern**: Highlight any abnormalities, potential issues, or areas requiring attention
+4. **Suggest next steps**: Additional views, tests, or treatments to consider based on findings
+5. **Provide differential considerations**: List possible diagnoses based on the visual findings
+
+**End with disclaimer**: "This AI analysis is for reference only. Clinical correlation and professional judgment are required."
+
+Remember: You are an AI assistant WITH vision capabilities helping a licensed dentist. Provide actual clinical observations and guidance based on what you see in the image.
 
 ## RESPONSE STRUCTURE
 
@@ -85,10 +91,12 @@ For simple questions, respond conversationally without rigid structure.
 
 Be transparent about your limitations:
 - You cannot examine patients directly
-- You cannot make definitive diagnoses
+- You cannot make definitive diagnoses - always recommend clinical correlation
 - You cannot replace clinical judgment
 - You may not have the latest research (knowledge cutoff applies)
-- Image analysis has inherent limitations
+- Image quality may affect analysis accuracy - note if image quality is suboptimal
+
+**Note**: You DO have vision capabilities. When images are provided, analyze them and provide your clinical observations.
 
 ## CONVERSATION CONTEXT
 
@@ -99,20 +107,25 @@ Now, how can I assist you with your clinical question?
 """
 
 
-def _format_practice_profile(profile_json: Optional[dict]) -> str:
+def _format_practice_profile(profile_json: Optional[dict], clinic_name: Optional[str] = None) -> str:
     """
     Convert the practice profile JSON into a readable text block.
 
     Args:
         profile_json: The practice profile dictionary from the database
+        clinic_name: The name of the clinic/practice
 
     Returns:
         A formatted string describing the doctor's philosophy
     """
+    sections = []
+
+    # Add clinic name at the beginning if provided
+    if clinic_name:
+        sections.append(f"**Practice Name**: {clinic_name}")
+
     if not profile_json:
         return "No specific practice philosophy configured. Using general evidence-based guidelines."
-
-    sections = []
 
     # Map of profile keys to human-readable section names
     section_mapping = {
@@ -190,7 +203,8 @@ def _format_rag_context(rag_context: Optional[str]) -> str:
 def build_clinical_prompt(
     practice_profile: Optional[dict] = None,
     conversation_history: Optional[list] = None,
-    rag_context: Optional[str] = None
+    rag_context: Optional[str] = None,
+    clinic_name: Optional[str] = None
 ) -> str:
     """
     Build the clinical advisor system prompt with injected practice philosophy and RAG context.
@@ -199,11 +213,12 @@ def build_clinical_prompt(
         practice_profile: The doctor's practice profile JSON from the database
         conversation_history: List of previous messages for context
         rag_context: Retrieved context from Pinecone RAG
+        clinic_name: The name of the clinic/practice
 
     Returns:
         The formatted system prompt string
     """
-    formatted_profile = _format_practice_profile(practice_profile)
+    formatted_profile = _format_practice_profile(practice_profile, clinic_name)
     formatted_history = _format_history_context(conversation_history)
     formatted_rag = _format_rag_context(rag_context)
 

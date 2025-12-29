@@ -1,0 +1,5 @@
+Clinic Name: Robeck Dental
+Client ID: 443f5716-27d3-463a-9377-33a666f5ad88
+Access Token: robeck-test-token-456
+Created At: 2025-12-08 07:55:22.258368
+Lead Webhook URL: None

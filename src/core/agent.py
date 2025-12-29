@@ -176,7 +176,8 @@ async def get_clinical_response(
     practice_profile: Optional[dict] = None,
     conversation_history: Optional[List[dict]] = None,
     image_base64: Optional[str] = None,
-    rag_context: Optional[str] = None
+    rag_context: Optional[str] = None,
+    clinic_name: Optional[str] = None
 ) -> dict:
     """
     Get response from the Clinical Advisor agent (Door 2).
@@ -196,6 +197,7 @@ async def get_clinical_response(
         conversation_history: List of previous messages (stateless - client provides)
         image_base64: Optional Base64-encoded image for analysis
         rag_context: Retrieved context from Pinecone RAG
+        clinic_name: The name of the clinic/practice
 
     Returns:
         Dict with response_text, confidence_level, requires_referral, safety_warnings
@@ -226,7 +228,8 @@ async def get_clinical_response(
     system_prompt = build_clinical_prompt(
         practice_profile=practice_profile,
         conversation_history=conversation_history,
-        rag_context=rag_context
+        rag_context=rag_context,
+        clinic_name=clinic_name
     )
 
     # Choose model based on whether we have a valid image
@@ -481,7 +484,9 @@ class PromptFactory:
                 user_message=user_message,
                 practice_profile=kwargs.get("practice_profile"),
                 conversation_history=kwargs.get("conversation_history"),
-                image_base64=kwargs.get("image_base64")
+                image_base64=kwargs.get("image_base64"),
+                rag_context=kwargs.get("rag_context"),
+                clinic_name=kwargs.get("clinic_name")
             )
         else:
             raise ValueError(f"Unknown agent type: {self.agent_type}")

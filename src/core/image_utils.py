@@ -32,7 +32,13 @@ DATA_URI_PATTERN = re.compile(
 
 def validate_base64_image(image_data: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """
-    Validate a Base64-encoded image string.
+    Validate a Base64-encoded image string with STRICT security checks.
+
+    Security validations performed:
+    1. Base64 encoding validity
+    2. Image size limits
+    3. File signature (magic bytes) verification
+    4. MIME type consistency check (declared vs actual)
 
     Args:
         image_data: The Base64 string (with or without data URI prefix)
@@ -46,50 +52,86 @@ def validate_base64_image(image_data: str) -> Tuple[bool, Optional[str], Optiona
     if not image_data:
         return False, None, "Image data is empty"
 
+    if not isinstance(image_data, str):
+        return False, None, "Image data must be a string"
+
+    # Check for suspiciously large base64 strings before processing
+    # Base64 is ~4/3 of original size, so 10MB image = ~13.3MB base64
+    MAX_BASE64_LENGTH = int(MAX_IMAGE_SIZE_BYTES * 1.4)
+    if len(image_data) > MAX_BASE64_LENGTH:
+        return False, None, f"Image data exceeds maximum allowed size"
+
     # Check if it's a data URI
     match = DATA_URI_PATTERN.match(image_data)
 
     if match:
-        mime_type = match.group("mime").lower()
+        declared_mime_type = match.group("mime").lower()
         base64_data = match.group("data")
     else:
-        # Assume raw base64, default to JPEG
-        mime_type = "image/jpeg"
+        # Raw base64 without data URI - we'll detect the type from content
+        declared_mime_type = None
         base64_data = image_data
-
-    # Validate MIME type
-    if mime_type not in SUPPORTED_IMAGE_TYPES:
-        return False, None, f"Unsupported image type: {mime_type}. Supported: {list(SUPPORTED_IMAGE_TYPES.keys())}"
 
     # Validate Base64 encoding
     try:
         # Remove any whitespace that might have been added
-        base64_data = base64_data.strip().replace(" ", "").replace("\n", "")
+        base64_data = base64_data.strip().replace(" ", "").replace("\n", "").replace("\r", "")
+
+        # Validate base64 characters (security check)
+        import re
+        if not re.match(r'^[A-Za-z0-9+/]*={0,2}$', base64_data):
+            return False, None, "Invalid Base64 characters detected"
 
         # Decode to check validity and size
         decoded = base64.b64decode(base64_data, validate=True)
 
-        # Check size
+        # Check minimum size (valid images need at least some bytes)
+        if len(decoded) < 100:
+            return False, None, "Image data too small to be a valid image"
+
+        # Check maximum size
         if len(decoded) > MAX_IMAGE_SIZE_BYTES:
             size_mb = len(decoded) / (1024 * 1024)
             return False, None, f"Image too large: {size_mb:.1f}MB. Maximum: {MAX_IMAGE_SIZE_BYTES / (1024 * 1024):.0f}MB"
 
-        # Basic validation that it looks like an image
-        # Check for common image file signatures
-        if not _has_valid_image_signature(decoded, mime_type):
-            return False, None, "Data does not appear to be a valid image"
+        # Detect actual image type from file signature
+        actual_mime_type = _detect_actual_image_type(decoded)
 
-        return True, mime_type, None
+        if actual_mime_type is None:
+            return False, None, "File does not have a valid image signature. Only JPEG, PNG, GIF, and WebP are supported."
+
+        # If a MIME type was declared, verify it matches the actual content
+        if declared_mime_type:
+            if declared_mime_type != actual_mime_type:
+                logger.warning(
+                    f"MIME type mismatch: declared={declared_mime_type}, actual={actual_mime_type}"
+                )
+                return False, None, f"Declared image type ({declared_mime_type}) does not match actual content ({actual_mime_type})"
+
+        # Verify the signature matches (double-check with the strict validator)
+        if not _has_valid_image_signature(decoded, actual_mime_type):
+            return False, None, "Image file signature validation failed"
+
+        # Final check: verify MIME type is in our supported list
+        if actual_mime_type not in SUPPORTED_IMAGE_TYPES:
+            return False, None, f"Unsupported image type: {actual_mime_type}. Supported: {list(SUPPORTED_IMAGE_TYPES.keys())}"
+
+        return True, actual_mime_type, None
 
     except base64.binascii.Error as e:
         return False, None, f"Invalid Base64 encoding: {str(e)}"
     except Exception as e:
+        logger.error(f"Unexpected error validating image: {e}")
         return False, None, f"Error validating image: {str(e)}"
 
 
 def _has_valid_image_signature(data: bytes, expected_mime: str) -> bool:
     """
     Check if the decoded data has a valid image file signature.
+
+    This function performs STRICT validation - it only returns True if the
+    file signature exactly matches known image formats. This prevents
+    malicious files from being processed as images.
 
     Args:
         data: The decoded image bytes
@@ -98,16 +140,24 @@ def _has_valid_image_signature(data: bytes, expected_mime: str) -> bool:
     Returns:
         True if the signature matches expected image type
     """
-    if len(data) < 8:
+    if len(data) < 12:  # Need at least 12 bytes for reliable detection
         return False
 
     # Image file signatures (magic bytes)
+    # These are the definitive signatures for each format
     signatures = {
         "image/jpeg": [b'\xff\xd8\xff'],
         "image/png": [b'\x89PNG\r\n\x1a\n'],
         "image/gif": [b'GIF87a', b'GIF89a'],
-        "image/webp": [b'RIFF'],  # WebP starts with RIFF
+        "image/webp": [],  # WebP needs special handling (RIFF + WEBP)
     }
+
+    # Special handling for WebP which has a more complex signature
+    if expected_mime == "image/webp":
+        # WebP format: RIFF....WEBP
+        if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+            return True
+        return False
 
     expected_sigs = signatures.get(expected_mime, [])
 
@@ -115,9 +165,38 @@ def _has_valid_image_signature(data: bytes, expected_mime: str) -> bool:
         if data[:len(sig)] == sig:
             return True
 
-    # If no signature matched but we have data, be lenient
-    # (some Base64 encodings might be valid but have unusual headers)
-    return len(data) > 100
+    # STRICT: No lenient fallback - if signature doesn't match, reject
+    # This prevents malicious files from being processed
+    return False
+
+
+def _detect_actual_image_type(data: bytes) -> Optional[str]:
+    """
+    Detect the actual image type from file data based on magic bytes.
+
+    This is used to verify that the declared MIME type matches the actual content,
+    preventing MIME type confusion attacks.
+
+    Args:
+        data: The decoded image bytes
+
+    Returns:
+        The detected MIME type, or None if not a recognized image
+    """
+    if len(data) < 12:
+        return None
+
+    # Check signatures in order of specificity
+    if data[:3] == b'\xff\xd8\xff':
+        return "image/jpeg"
+    elif data[:8] == b'\x89PNG\r\n\x1a\n':
+        return "image/png"
+    elif data[:6] in [b'GIF87a', b'GIF89a']:
+        return "image/gif"
+    elif data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return "image/webp"
+
+    return None
 
 
 def normalize_image_data(image_data: str) -> str:

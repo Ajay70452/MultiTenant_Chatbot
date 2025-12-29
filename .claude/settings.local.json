@@ -3,7 +3,24 @@
     "allow": [
       "Bash(alembic revision:*)",
       "Bash(docker exec:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(python -c:*)",
+      "Bash(aws ecs describe-services:*)",
+      "Bash(powershell:*)",
+      "Bash(docker build:*)",
+      "Bash(docker tag:*)",
+      "Bash(aws ecr get-login-password:*)",
+      "Bash(docker login:*)",
+      "Bash(docker push:*)",
+      "Bash(aws ecs update-service:*)",
+      "Bash(docker run:*)",
+      "Bash(docker images:*)",
+      "Bash(aws ecr describe-images:*)",
+      "Bash(aws ecs list-tasks:*)",
+      "Bash(aws ecs describe-tasks:*)",
+      "Bash(aws ecs describe-task-definition:*)",
+      "Bash(aws s3 cp:*)",
+      "Bash(aws s3 ls:*)"
     ],
     "deny": [],
     "ask": []

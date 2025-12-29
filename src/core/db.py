@@ -14,7 +14,20 @@ _SessionLocal = None
 def _init_engine_and_session():
     global _engine, _SessionLocal
     if _engine is None:
-        _engine = create_engine(DATABASE_URL)
+        # Create engine with connection arguments optimized for SSH tunnel connections
+        _engine = create_engine(
+            DATABASE_URL,
+            connect_args={
+                "connect_timeout": 60,  # Increased timeout for SSH tunnel (seconds)
+                "keepalives": 1,  # Enable TCP keepalives
+                "keepalives_idle": 30,  # Seconds before sending keepalive probes
+                "keepalives_interval": 10,  # Seconds between keepalive probes
+                "keepalives_count": 5,  # Number of keepalives before connection considered dead
+                "options": "-c statement_timeout=300000"  # 5 minutes statement timeout (milliseconds)
+            },
+            pool_pre_ping=True,  # Verify connections before using them
+            pool_recycle=3600,  # Recycle connections after 1 hour
+        )
     if _SessionLocal is None:
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
     return _engine, _SessionLocal

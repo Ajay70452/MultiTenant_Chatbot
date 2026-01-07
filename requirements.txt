@@ -9,3 +9,19 @@ langchain-openai
 pinecone
 requests
 httpx
+
+# LangChain Extensions
+langchain-pinecone
+langchain-core
+langchain-experimental
+
+# Admin Portal Dependencies
+PyJWT
+passlib
+bcrypt
+python-multipart
+
+# Document Processing
+PyPDF2
+python-docx
+beautifulsoup4

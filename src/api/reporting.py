@@ -266,10 +266,10 @@ async def get_leads(
         leads.append(LeadSummary(
             conversation_id=str(conv.conversation_id),
             started_at=conv.last_activity_at,
-            patient_name=state.get('patient_name'),
-            patient_phone=state.get('phone_number'),
+            patient_name=state.get('name'),
+            patient_phone=state.get('phone'),
             patient_email=state.get('email'),
-            reason_for_visit=state.get('reason_for_visit'),
+            reason_for_visit=state.get('appointment_type'),
             delivery_status=conv.delivery_status,
             topic_tag=conv.topic_tag
         ))

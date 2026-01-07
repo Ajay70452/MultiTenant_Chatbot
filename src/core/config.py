@@ -25,4 +25,11 @@ else:
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "robeck-dental-v2")
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://api.methodpro.com,https://dental-chatbot-coral.vercel.app,https://dental-chatbot-widget-prod.s3.us-west-2.amazonaws.com,http://dental-chatbot-widget-prod.s3-website-us-west-2.amazonaws.com,https://dm4ym7twaensu.cloudfront.net")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", 
+                            "http://localhost:3000," \
+                            "https://api.methodpro.com," \
+                            "https://dental-chatbot-coral.vercel.app," \
+                            "https://dental-chatbot-widget-prod.s3.us-west-2.amazonaws.com," \
+                            "http://dental-chatbot-widget-prod.s3-website-us-west-2.amazonaws.com," \
+                            "https://dm4ym7twaensu.cloudfront.net," \
+                            "http://dm4ym7twaensu.cloudfront.net")

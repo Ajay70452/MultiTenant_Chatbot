@@ -26,12 +26,7 @@ from src.models.models import Client
 
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# Session Token Management (In-Memory Store)
-# =============================================================================
 
-# In-memory store for session tokens: {session_token: (client_id, expiry_datetime)}
-# In production, consider using Redis for distributed deployments
 _session_store: Dict[str, Tuple[UUID, datetime]] = {}
 
 # Session token expiry time (4 hours)
@@ -211,7 +206,7 @@ def verify_client_token(db: Session, client_id: UUID, token: str) -> bool:
         logger.warning(f"Client {client_id} has no access_token configured")
         return False
 
-    # Use constant-time comparison to prevent timing attacks
+    
     import secrets
     is_valid = secrets.compare_digest(client.access_token, token)
 
@@ -272,7 +267,7 @@ async def require_client_token(
             detail="Missing X-Client-Token header"
         )
 
-    # First, try to validate as a session token
+    
     client_id = validate_session_token(x_client_token)
     if client_id:
         client = db.query(Client).filter(Client.client_id == client_id).first()

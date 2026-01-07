@@ -11,6 +11,18 @@ from src.services.data_export import simple_data_exporter
 
 logger = logging.getLogger(__name__)
 
+def is_after_hours() -> bool:
+    """
+    Check if the current time is outside business hours.
+    Business hours: 9 AM - 5 PM (local time, assumed UTC for now)
+    """
+    now = datetime.datetime.utcnow()
+    hour = now.hour
+    # After hours = before 9 AM or after 5 PM, or on weekends
+    is_weekend = now.weekday() >= 5  # Saturday = 5, Sunday = 6
+    is_outside_hours = hour < 9 or hour >= 17
+    return is_weekend or is_outside_hours
+
 def simple_data_exporter(conversation: Conversation):
     """
     A simple placeholder for exporting finalized lead data.
@@ -34,6 +46,7 @@ def finalize_conversation(db: Session, conversation_id: str):
         if conversation and not conversation.is_finalized:
             logger.info(f"Conversation before finalize: {conversation.conversation_state}", extra={'conversation_id': conversation_id})
             conversation.is_finalized = True
+            conversation.lead_captured = True  # Mark lead as captured for reporting
             conversation.finalized_at = datetime.datetime.utcnow()
             db.commit()
             db.refresh(conversation)
@@ -53,10 +66,11 @@ def load_or_create_conversation(db: Session, conversation_id: str, client_id: st
             conversation_id=conversation_id,
             client_id=client_id,
             current_stage='GREETING',
+            is_after_hours=is_after_hours(),  # Track if conversation started outside business hours
             conversation_state={
-                'name': None, 
-                'phone': None, 
-                'email': None, 
+                'name': None,
+                'phone': None,
+                'email': None,
                 'service': None,
                 'appointment_type': None,
                 'last_visit': None,

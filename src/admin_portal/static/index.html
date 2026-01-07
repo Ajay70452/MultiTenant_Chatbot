@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Practice Brain Admin Portal</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="logo">
+                    <i class="fas fa-brain"></i>
+                </div>
+                <h1>Practice Brain</h1>
+                <p>Admin Portal</p>
+            </div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" placeholder="Enter username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Enter password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">
+                    <i class="fas fa-sign-in-alt"></i> Sign In
+                </button>
+                <div id="login-error" class="error-message" style="display: none;"></div>
+            </form>
+            <div class="login-footer">
+                <p>Default: admin / admin123</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="dashboard" class="dashboard" style="display: none;">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-small">
+                    <i class="fas fa-brain"></i>
+                </div>
+                <span class="logo-text">Practice Brain</span>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-section="practices">
+                    <i class="fas fa-building"></i>
+                    <span>Practices</span>
+                </a>
+                <a href="#" class="nav-item" data-section="knowledge">
+                    <i class="fas fa-book"></i>
+                    <span>Knowledge Library</span>
+                </a>
+                <a href="#" class="nav-item" data-section="health">
+                    <i class="fas fa-heartbeat"></i>
+                    <span>Agent Health</span>
+                </a>
+                <a href="#" class="nav-item" data-section="audit">
+                    <i class="fas fa-history"></i>
+                    <span>Audit Log</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <i class="fas fa-user-circle"></i>
+                    <span id="admin-username">Admin</span>
+                </div>
+                <button id="logout-btn" class="btn-logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="content-header">
+                <div class="header-left">
+                    <h1 id="page-title">Practices</h1>
+                    <div class="breadcrumb" id="breadcrumb">
+                        <span>Dashboard</span>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="practice-selector" id="practice-selector-container" style="display: none;">
+                        <select id="practice-selector">
+                            <option value="">Select Practice...</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-icon" id="refresh-btn">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Content Sections -->
+            <div class="content-body">
+                <!-- Practices Section -->
+                <section id="practices-section" class="section active">
+                    <div class="section-header">
+                        <h2>All Practices</h2>
+                        <div class="section-actions">
+                            <input type="text" class="search-input" id="practice-search" placeholder="Search practices...">
+                        </div>
+                    </div>
+                    <div class="practices-grid" id="practices-grid">
+                        <!-- Practice cards will be inserted here -->
+                    </div>
+                </section>
+
+                <!-- Knowledge Library Section -->
+                <section id="knowledge-section" class="section">
+                    <div class="section-header">
+                        <h2>Knowledge Library</h2>
+                        <div class="section-actions">
+                            <button class="btn btn-primary" id="add-doc-btn">
+                                <i class="fas fa-plus"></i> Add Document
+                            </button>
+                            <button class="btn btn-secondary" id="reindex-all-btn">
+                                <i class="fas fa-sync"></i> Re-index All
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Index Stats -->
+                    <div class="index-stats-bar" id="index-stats">
+                        <!-- Stats will be loaded here -->
+                    </div>
+                    
+                    <!-- Sources Cards -->
+                    <div class="sources-container">
+                        <h3>Sources</h3>
+                        <div class="sources-grid" id="sources-grid">
+                            <!-- Source cards will be inserted here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Documents Table -->
+                    <div class="documents-container">
+                        <div class="documents-header">
+                            <h3>Documents</h3>
+                            <div class="filter-group">
+                                <select id="status-filter">
+                                    <option value="">All Status</option>
+                                    <option value="indexed">Indexed</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="failed">Failed</option>
+                                    <option value="disabled">Disabled</option>
+                                </select>
+                                <select id="type-filter">
+                                    <option value="">All Types</option>
+                                    <option value="website">Website</option>
+                                    <option value="pdf">PDF</option>
+                                    <option value="doc">Document</option>
+                                    <option value="faq">FAQ</option>
+                                    <option value="sop">SOP</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <table class="documents-table">
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                    <th>Subagents</th>
+                                    <th>Chunks</th>
+                                    <th>Last Indexed</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="documents-tbody">
+                                <!-- Document rows will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Health Section -->
+                <section id="health-section" class="section">
+                    <div class="section-header">
+                        <h2>Agent Health</h2>
+                        <div class="section-actions">
+                            <button class="btn btn-secondary" id="ping-all-btn">
+                                <i class="fas fa-satellite-dish"></i> Ping All
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="health-grid">
+                        <div class="health-card" id="chat-health-card">
+                            <div class="health-icon">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <div class="health-info">
+                                <h4>Chat Endpoint</h4>
+                                <span class="health-status" id="chat-status">Checking...</span>
+                                <span class="response-time" id="chat-response-time"></span>
+                            </div>
+                        </div>
+                        
+                        <div class="health-card" id="clinical-health-card">
+                            <div class="health-icon">
+                                <i class="fas fa-user-md"></i>
+                            </div>
+                            <div class="health-info">
+                                <h4>Clinical Advisor</h4>
+                                <span class="health-status" id="clinical-status">Checking...</span>
+                                <span class="response-time" id="clinical-response-time"></span>
+                            </div>
+                        </div>
+                        
+                        <div class="health-card" id="pinecone-health-card">
+                            <div class="health-icon">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <div class="health-info">
+                                <h4>Pinecone</h4>
+                                <span class="health-status" id="pinecone-status">Checking...</span>
+                                <span class="vectors-count" id="pinecone-vectors"></span>
+                            </div>
+                        </div>
+                        
+                        <div class="health-card" id="overall-health-card">
+                            <div class="health-icon">
+                                <i class="fas fa-shield-alt"></i>
+                            </div>
+                            <div class="health-info">
+                                <h4>Overall Status</h4>
+                                <span class="health-status" id="overall-status">Checking...</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Audit Log Section -->
+                <section id="audit-section" class="section">
+                    <div class="section-header">
+                        <h2>Audit Log</h2>
+                        <div class="section-actions">
+                            <input type="text" class="search-input" id="audit-search" placeholder="Search actions...">
+                        </div>
+                    </div>
+                    
+                    <table class="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Action</th>
+                                <th>Actor</th>
+                                <th>Practice</th>
+                                <th>Document</th>
+                                <th>Result</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-tbody">
+                            <!-- Audit entries will be inserted here -->
+                        </tbody>
+                    </table>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Document Preview Modal -->
+    <div id="preview-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="preview-title">Document Preview</h3>
+                <button class="modal-close" id="close-preview">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="preview-meta" id="preview-meta">
+                    <!-- Metadata will be inserted here -->
+                </div>
+                <div class="preview-content" id="preview-content">
+                    <!-- Preview content will be inserted here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="preview-reindex-btn">
+                    <i class="fas fa-sync"></i> Re-index
+                </button>
+                <button class="btn btn-primary" id="close-preview-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Document Modal -->
+    <div id="upload-modal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3><i class="fas fa-upload"></i> Add Document</h3>
+                <button class="modal-close" id="close-upload">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Upload Tabs -->
+                <div class="upload-tabs">
+                    <button class="upload-tab active" data-tab="file">
+                        <i class="fas fa-file-upload"></i> Upload File
+                    </button>
+                    <button class="upload-tab" data-tab="text">
+                        <i class="fas fa-keyboard"></i> Enter Text
+                    </button>
+                </div>
+                
+                <!-- File Upload Panel -->
+                <div class="upload-panel active" data-panel="file">
+                    <input type="file" id="upload-file" accept=".pdf,.docx,.doc,.txt,.md,.html,.json" hidden>
+                    <div class="drop-zone" id="drop-zone">
+                        <div class="drop-zone-content">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>Drag and drop your file here</p>
+                            <span>or click to select</span>
+                            <p class="file-types">Supported: PDF, DOCX, DOC, TXT, MD, HTML, JSON</p>
+                        </div>
+                    </div>
+                    
+                    <div class="file-info">
+                        <i class="fas fa-file"></i>
+                        <span id="file-name-display">No file selected</span>
+                    </div>
+                    
+                    <div class="upload-options">
+                        <div class="form-group">
+                            <label for="upload-title">Document Title</label>
+                            <input type="text" id="upload-title" placeholder="Auto-filled from filename">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="upload-source-type">Source Type</label>
+                                <select id="upload-source-type">
+                                    <option value="pdf">PDF</option>
+                                    <option value="doc">Document</option>
+                                    <option value="website">Website/Text</option>
+                                    <option value="faq">FAQ</option>
+                                    <option value="sop">SOP</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="upload-subagents">Allow Subagents</label>
+                                <input type="text" id="upload-subagents" value="chat,clinical" placeholder="chat,clinical">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="upload-progress" id="upload-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-bar-fill" id="upload-progress-bar" style="width: 0%"></div>
+                        </div>
+                        <span id="upload-progress-text">Uploading...</span>
+                    </div>
+                </div>
+                
+                <!-- Text Input Panel -->
+                <div class="upload-panel" data-panel="text">
+                    <div class="form-group">
+                        <label for="text-title">Document Title *</label>
+                        <input type="text" id="text-title" placeholder="Enter document title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="text-content">Content *</label>
+                        <textarea id="text-content" rows="12" placeholder="Paste or type your content here. Minimum 50 characters."></textarea>
+                    </div>
+                    <p class="form-hint">This content will be chunked semantically and indexed into the knowledge base.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-upload-btn">Cancel</button>
+                <button class="btn btn-primary" id="upload-btn">
+                    <i class="fas fa-upload"></i> Upload & Index
+                </button>
+                <button class="btn btn-primary" id="index-text-btn" style="display: none;">
+                    <i class="fas fa-database"></i> Index Text
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

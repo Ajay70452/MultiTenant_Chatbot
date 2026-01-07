@@ -12,10 +12,9 @@ services:
     # Mount a volume to persist data, so you don't lose it when the container stops
     volumes:
       - postgres_data:/var/lib/postgresql/data/
-    # (Optional) Map the container port 5432 to host port 5432. Removed by default to avoid exposing DB to host.
-    # Uncomment the below lines if you need host access to the DB for debugging/tools.
-    # ports:
-    #   - "5432:5432"
+    # Map container port 5432 to host for local dev/migrations
+    ports:
+      - "5432:5432"
     # Restart the container if it stops unexpectedly
     restart: always
     healthcheck:

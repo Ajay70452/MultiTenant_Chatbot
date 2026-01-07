@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from src.api.chat import router as chat_router
 from src.api.admin import admin_router
 from src.api.clinical import router as clinical_router
 from src.api.reporting import router as reporting_router
+from src.admin_portal.router import admin_portal_router
 from fastapi.middleware.cors import CORSMiddleware
 from src.core.config import ALLOWED_ORIGINS
 from src.core.logging_config import setup_logging
@@ -17,17 +19,31 @@ setup_logging()
 app = FastAPI(title="Dental Chatbot API")
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS.split(','),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+      CORSMiddleware,
+      allow_origins=["*"],
+      allow_credentials=True,
+      allow_methods=["*"],
+      allow_headers=["*"],
+  )
+
+@app.exception_handler(Exception)
+async def cors_exception_handler(request: Request, exc: Exception):
+    """Ensure CORS headers are included even on 500 errors"""
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 app.include_router(chat_router, prefix="/api", tags=["Chat"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
 app.include_router(clinical_router, prefix="/api/clinical", tags=["Clinical Advisor"])
 app.include_router(reporting_router, prefix="/api/ahsuite", tags=["Reporting Dashboard"])
+app.include_router(admin_portal_router, prefix="/admin", tags=["Admin Portal"])
 
 # Mount static files for frontends
 BASE_DIR = Path(__file__).parent.parent

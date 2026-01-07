@@ -72,3 +72,24 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_session_local():
+    """Get the SessionLocal factory for creating database sessions directly."""
+    if _SessionLocal is None:
+        _init_engine_and_session()
+    return _SessionLocal
+
+
+# Convenience alias for direct session creation
+SessionLocal = property(lambda self: get_session_local())
+
+
+class SessionLocalFactory:
+    """Factory class that provides SessionLocal on demand."""
+    def __call__(self):
+        return get_session_local()()
+
+
+# Export SessionLocal as a callable factory
+SessionLocal = SessionLocalFactory()

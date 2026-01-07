@@ -443,7 +443,9 @@ class ClinicalChatRequest(BaseModel):
 class ClinicalChatResponse(BaseModel):
     """Response schema for the Clinical Advisor endpoint."""
     response: str = Field(..., description="The clinical advisor's response")
-    client_id: str = Field(..., description="The authenticated client's ID")
+    client_id: str = Field(..., description="The a" \
+    "" \
+    "uthenticated client's ID")
     has_image: bool = Field(
         default=False,
         description="Whether the request included an image for analysis"
@@ -660,7 +662,7 @@ async def clinical_chat(
         safety_warnings=agent_response.get("safety_warnings", [])
     )
 
-
+ 
 @router.get(
     "/profile",
     summary="Get Practice Profile",

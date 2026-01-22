@@ -63,6 +63,10 @@
                     <i class="fas fa-heartbeat"></i>
                     <span>Agent Health</span>
                 </a>
+                <a href="#" class="nav-item" data-section="clinical-intake">
+                    <i class="fas fa-user-md"></i>
+                    <span>Clinical Intake</span>
+                </a>
                 <a href="#" class="nav-item" data-section="audit">
                     <i class="fas fa-history"></i>
                     <span>Audit Log</span>
@@ -251,7 +255,7 @@
                             <input type="text" class="search-input" id="audit-search" placeholder="Search actions...">
                         </div>
                     </div>
-                    
+
                     <table class="audit-table">
                         <thead>
                             <tr>
@@ -267,6 +271,388 @@
                             <!-- Audit entries will be inserted here -->
                         </tbody>
                     </table>
+                </section>
+
+                <!-- Clinical Intake Section -->
+                <section id="clinical-intake-section" class="section">
+                    <div class="section-header">
+                        <h2>Clinical Advisor Intake</h2>
+                        <div class="section-actions">
+                            <button class="btn btn-secondary" id="regenerate-summary-btn">
+                                <i class="fas fa-sync"></i> Regenerate Summary
+                            </button>
+                            <button class="btn btn-primary" id="save-clinical-config-btn">
+                                <i class="fas fa-save"></i> Save Configuration
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Status Bar -->
+                    <div class="clinical-status-bar" id="clinical-status-bar">
+                        <div class="status-item">
+                            <span class="status-label">Profile Version:</span>
+                            <span class="status-value" id="config-version">--</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Estimated Tokens:</span>
+                            <span class="status-value" id="config-tokens">--</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Last Updated:</span>
+                            <span class="status-value" id="config-updated">--</span>
+                        </div>
+                    </div>
+
+                    <div class="clinical-intake-container">
+                        <!-- Left Column: Form -->
+                        <div class="intake-form-column">
+                            <form id="clinical-intake-form">
+                                <!-- Section 1: Clinical Philosophy -->
+                                <div class="intake-section">
+                                    <h3><i class="fas fa-brain"></i> Clinical Philosophy</h3>
+                                    <p class="section-description">Select the clinical philosophy that guides your practice's decision-making.</p>
+
+                                    <div class="form-group">
+                                        <label for="primary-bias">Primary Philosophy Influence *</label>
+                                        <select id="primary-bias" required>
+                                            <option value="agd">Academy of General Dentistry (AGD) - Broad-based, evidence-informed</option>
+                                            <option value="spear">Spear Education - Diagnosis-first, stability-focused</option>
+                                            <option value="kois">Kois Center - Risk stratification, failure prevention</option>
+                                            <option value="dawson">Dawson Academy - Function-first, occlusal harmony</option>
+                                            <option value="pankey">Pankey Institute - Whole-patient, phased care</option>
+                                            <option value="conservative">Conservative / Traditional - Risk-averse, preservation</option>
+                                            <option value="mixed">Mixed / Pragmatic - Balanced, practical</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="secondary-bias">Secondary Philosophy Influence</label>
+                                        <select id="secondary-bias">
+                                            <option value="">None</option>
+                                            <option value="agd">Academy of General Dentistry (AGD)</option>
+                                            <option value="spear">Spear Education</option>
+                                            <option value="kois">Kois Center</option>
+                                            <option value="dawson">Dawson Academy</option>
+                                            <option value="pankey">Pankey Institute</option>
+                                            <option value="conservative">Conservative / Traditional</option>
+                                            <option value="mixed">Mixed / Pragmatic</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="bias-strength">Strength of Influence</label>
+                                        <select id="bias-strength">
+                                            <option value="moderate">Moderate - Influences decisions</option>
+                                            <option value="strong">Strong - Guides most decisions</option>
+                                            <option value="general">General - Provides guidance, allows flexibility</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="philosophy-context">Additional Context</label>
+                                        <textarea id="philosophy-context" rows="3" maxlength="500" placeholder="Any additional context about your training, mentorship, or clinical evolution..."></textarea>
+                                        <span class="char-count"><span id="philosophy-context-count">0</span>/500</span>
+                                    </div>
+                                </div>
+
+                                <!-- Section 2: Procedures In-House -->
+                                <div class="intake-section">
+                                    <h3><i class="fas fa-tooth"></i> Procedures Performed In-House</h3>
+
+                                    <div class="form-group">
+                                        <label>Endodontics</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="endo" value="anterior"> Anterior
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="endo" value="premolar"> Premolar
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="endo" value="molar"> Molar
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="endo" value="referred"> Typically Referred
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Extractions</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="extractions" value="simple"> Simple
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="extractions" value="surgical"> Surgical
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="extractions" value="third_molars"> Third Molars
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="implants">Implants</label>
+                                        <select id="implants">
+                                            <option value="not_performed">Not Performed (Referred)</option>
+                                            <option value="restorative_only">Restorative Only (Placement Referred)</option>
+                                            <option value="placement_and_restoration">Placement and Restoration</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Sedation</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="sedation" value="none"> None
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="sedation" value="nitrous"> Nitrous
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="sedation" value="oral"> Oral
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="sedation" value="iv"> IV (Certified)
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="pediatric-min-age">Pediatric Min Age</label>
+                                            <input type="number" id="pediatric-min-age" min="0" max="18" placeholder="e.g., 5">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Pediatric Options</label>
+                                            <div class="checkbox-group">
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="pediatric-limited"> Limited
+                                                </label>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="pediatric-referred"> Referred
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Other Services</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="other-services" value="clear_aligners"> Clear Aligners
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="other-services" value="sleep_airway"> Sleep/Airway
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="other-services" value="perio_therapy"> Perio Therapy
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="other-services" value="laser"> Laser
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="other-services" value="cosmetic"> Cosmetic
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Section 3: Equipment & Technology -->
+                                <div class="intake-section">
+                                    <h3><i class="fas fa-x-ray"></i> Equipment & Technology</h3>
+
+                                    <div class="form-group">
+                                        <label>Imaging</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="imaging" value="digital_pa"> Digital PAs
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="imaging" value="panoramic"> Panoramic
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="imaging" value="cbct"> CBCT
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Digital Dentistry</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="digital" value="intraoral_scanner"> Intraoral Scanner
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="digital" value="cad_cam"> In-house CAD/CAM
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="digital" value="digital_impressions"> Digital Impressions
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="equipment-limitations">Equipment Limitations</label>
+                                        <input type="text" id="equipment-limitations" maxlength="300" placeholder="e.g., No in-house milling">
+                                    </div>
+                                </div>
+
+                                <!-- Section 4: Team Experience -->
+                                <div class="intake-section">
+                                    <h3><i class="fas fa-users"></i> Team Experience</h3>
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="provider-years">Provider Years in Practice</label>
+                                            <select id="provider-years">
+                                                <option value="">Select...</option>
+                                                <option value="0-5">0-5 years</option>
+                                                <option value="5-10">5-10 years</option>
+                                                <option value="10-20">10-20 years</option>
+                                                <option value="20+">20+ years</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="team-stability">Team Stability</label>
+                                            <select id="team-stability">
+                                                <option value="">Select...</option>
+                                                <option value="highly_experienced">Highly Experienced / Stable</option>
+                                                <option value="mixed">Mixed Experience</option>
+                                                <option value="newer_team">Newer Team</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="hygiene-model">Hygiene Model</label>
+                                        <select id="hygiene-model">
+                                            <option value="">Select...</option>
+                                            <option value="traditional">Traditional Hygiene</option>
+                                            <option value="assisted">Assisted Hygiene</option>
+                                            <option value="structured_perio">Structured Periodontal Program</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Section 5: Referral Philosophy -->
+                                <div class="intake-section">
+                                    <h3><i class="fas fa-share-alt"></i> Referral Philosophy</h3>
+
+                                    <div class="form-group">
+                                        <label>Primary Reasons for Referral</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="referral-reasons" value="complexity"> Case Complexity
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="referral-reasons" value="time"> Time Constraints
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="referral-reasons" value="risk"> Risk Management
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="referral-reasons" value="philosophy"> Clinical Philosophy
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="referral-view">View on Referrals</label>
+                                        <select id="referral-view">
+                                            <option value="">Select...</option>
+                                            <option value="core_to_quality">Core to Quality Care</option>
+                                            <option value="situational">Situational</option>
+                                            <option value="trying_to_reduce">Trying to Reduce / Expand In-house</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Section 6: Risk & Documentation -->
+                                <div class="intake-section">
+                                    <h3><i class="fas fa-shield-alt"></i> Risk & Documentation</h3>
+
+                                    <div class="form-group">
+                                        <label for="documentation-level">Documentation Practices</label>
+                                        <select id="documentation-level">
+                                            <option value="">Select...</option>
+                                            <option value="strong">Strong and Consistent</option>
+                                            <option value="adequate">Adequate but Variable</option>
+                                            <option value="needs_improvement">Needs Improvement</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Extra Caution Areas</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="caution-areas" value="board_scrutiny"> Board Scrutiny Sensitivity
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="caution-areas" value="malpractice"> Malpractice Risk Awareness
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="caution-areas" value="conservative_culture"> Conservative Practice Culture
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Section 7: Operational Preferences -->
+                                <div class="intake-section">
+                                    <h3><i class="fas fa-cog"></i> Operational Preferences</h3>
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="treatment-approach">Treatment Approach</label>
+                                            <select id="treatment-approach">
+                                                <option value="">Select...</option>
+                                                <option value="conservative">Conservative</option>
+                                                <option value="moderate">Moderate</option>
+                                                <option value="comprehensive">Comprehensive</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="case-complexity">Case Complexity Handling</label>
+                                            <select id="case-complexity">
+                                                <option value="">Select...</option>
+                                                <option value="refer_early">Refer Early</option>
+                                                <option value="moderate_in_house">Moderate In-House</option>
+                                                <option value="advanced_in_house">Advanced In-House</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Section 8: Additional Notes -->
+                                <div class="intake-section">
+                                    <h3><i class="fas fa-sticky-note"></i> Additional Notes</h3>
+
+                                    <div class="form-group">
+                                        <label for="additional-notes">What should an experienced clinical partner know about your practice?</label>
+                                        <textarea id="additional-notes" rows="4" maxlength="1000" placeholder="Any additional context that would help the Clinical Advisor better serve your practice..."></textarea>
+                                        <span class="char-count"><span id="additional-notes-count">0</span>/1000</span>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Right Column: Preview -->
+                        <div class="intake-preview-column">
+                            <div class="preview-sticky">
+                                <h3><i class="fas fa-eye"></i> Injection Preview</h3>
+                                <p class="preview-description">This is the text that will be injected into the Clinical Advisor prompt.</p>
+                                <div class="injection-preview" id="injection-preview">
+                                    <p class="preview-placeholder">Select a practice and the preview will appear here...</p>
+                                </div>
+                                <div class="preview-stats">
+                                    <span><i class="fas fa-text-width"></i> <span id="preview-chars">0</span> chars</span>
+                                    <span><i class="fas fa-coins"></i> ~<span id="preview-tokens">0</span> tokens</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </section>
             </div>
         </main>

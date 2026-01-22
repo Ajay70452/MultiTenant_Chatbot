@@ -209,3 +209,116 @@ def delete_practice_profile(db: Session, client_id: UUID) -> bool:
     db.commit()
     logger.info(f"Deleted practice profile for client: {client_id}")
     return True
+
+
+# =============================================================================
+# Practice Profile Injection Caching Functions
+# =============================================================================
+
+def get_clinical_advisor_config(db: Session, client_id: UUID) -> Optional[dict]:
+    """
+    Get the clinical_advisor_config from a practice profile.
+
+    Args:
+        db: Database session
+        client_id: The UUID of the client
+
+    Returns:
+        The clinical_advisor_config dict if found, None otherwise
+    """
+    profile_json = get_practice_profile(db, client_id)
+    if not profile_json:
+        return None
+    return profile_json.get("clinical_advisor_config")
+
+
+def get_cached_injection_summary(db: Session, client_id: UUID) -> Optional[str]:
+    """
+    Get the cached clinical_advisor_profile_summary if available.
+
+    Args:
+        db: Database session
+        client_id: The UUID of the client
+
+    Returns:
+        The cached summary string if found, None otherwise
+    """
+    profile_json = get_practice_profile(db, client_id)
+    if not profile_json:
+        return None
+    return profile_json.get("clinical_advisor_profile_summary")
+
+
+def update_injection_summary_cache(
+    db: Session,
+    client_id: UUID,
+    summary: str,
+    version: int = 1
+) -> bool:
+    """
+    Update the cached injection summary in the practice profile.
+
+    This should be called after building a new injection to cache it
+    for future requests, avoiding regeneration on every message.
+
+    Args:
+        db: Database session
+        client_id: The UUID of the client
+        summary: The generated injection summary text
+        version: The profile version number
+
+    Returns:
+        True if updated successfully, False otherwise
+    """
+    profile = db.query(PracticeProfile).filter(
+        PracticeProfile.practice_id == client_id
+    ).first()
+
+    if not profile:
+        logger.warning(f"No practice profile to update cache for client: {client_id}")
+        return False
+
+    # Update the profile_json with cached summary and version
+    profile_json = profile.profile_json or {}
+    profile_json["clinical_advisor_profile_summary"] = summary
+    profile_json["clinical_advisor_profile_version"] = version
+    profile.profile_json = profile_json
+    profile.updated_at = datetime.datetime.utcnow()
+
+    db.commit()
+    logger.info(f"Updated injection summary cache for client: {client_id}")
+    return True
+
+
+def invalidate_injection_cache(db: Session, client_id: UUID) -> bool:
+    """
+    Invalidate the cached injection summary for a practice.
+
+    Call this when the clinical_advisor_config is updated to force
+    regeneration of the injection summary on the next request.
+
+    Args:
+        db: Database session
+        client_id: The UUID of the client
+
+    Returns:
+        True if invalidated successfully, False otherwise
+    """
+    profile = db.query(PracticeProfile).filter(
+        PracticeProfile.practice_id == client_id
+    ).first()
+
+    if not profile:
+        logger.warning(f"No practice profile to invalidate cache for client: {client_id}")
+        return False
+
+    profile_json = profile.profile_json or {}
+    # Clear the cached summary
+    profile_json.pop("clinical_advisor_profile_summary", None)
+    profile_json["clinical_advisor_profile_version"] = 0
+    profile.profile_json = profile_json
+    profile.updated_at = datetime.datetime.utcnow()
+
+    db.commit()
+    logger.info(f"Invalidated injection cache for client: {client_id}")
+    return True

@@ -20,7 +20,16 @@
       "Bash(aws ecs describe-tasks:*)",
       "Bash(aws ecs describe-task-definition:*)",
       "Bash(aws s3 cp:*)",
-      "Bash(aws s3 ls:*)"
+      "Bash(aws s3 ls:*)",
+      "Bash(\"C:\\\\Program Files\\\\Docker\\\\Docker\\\\resources\\\\bin\\\\docker.exe\" build --no-cache -t dental-chatbot-api:latest E:T2-Chatbot-2.0)",
+      "Bash(\"C:\\\\Program Files\\\\Docker\\\\Docker\\\\resources\\\\bin\\\\docker.exe\" build --no-cache -t dental-chatbot-api:latest .)",
+      "Bash(\"C:\\\\Program Files\\\\Docker\\\\Docker\\\\resources\\\\bin\\\\docker.exe\" tag dental-chatbot-api:latest 901977635634.dkr.ecr.us-west-2.amazonaws.com/dental-chatbot-api:latest)",
+      "Bash(\"C:\\\\Program Files\\\\Docker\\\\Docker\\\\resources\\\\bin\\\\docker.exe\" login --username AWS --password-stdin 901977635634.dkr.ecr.us-west-2.amazonaws.com)",
+      "Bash(\"C:\\\\Program Files\\\\Docker\\\\Docker\\\\resources\\\\bin\\\\docker.exe\" push 901977635634.dkr.ecr.us-west-2.amazonaws.com/dental-chatbot-api:latest)",
+      "Bash(alembic upgrade:*)",
+      "Bash(docker compose:*)",
+      "Bash(python -m uvicorn:*)",
+      "Bash(ping:*)"
     ],
     "deny": [],
     "ask": []

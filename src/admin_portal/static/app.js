@@ -7,7 +7,10 @@
 // Configuration
 // =============================================================================
 
-const API_BASE_URL = '/admin';
+// API Base URL - Update this when hosting on S3 or different domain
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? '/admin'  // Local development
+    : 'https://api.methodpro.com/admin';  // Production (S3 hosting)
 let authToken = localStorage.getItem('adminToken');
 let currentPracticeId = null;
 let currentDocId = null;
@@ -165,27 +168,28 @@ function navigateToSection(sectionId) {
         item.classList.remove('active');
     });
     document.querySelector(`[data-section="${sectionId}"]`)?.classList.add('active');
-    
+
     // Update sections
     document.querySelectorAll('.section').forEach(section => {
         section.classList.remove('active');
     });
     document.getElementById(`${sectionId}-section`)?.classList.add('active');
-    
+
     // Update header
     const titles = {
         practices: 'Practices',
         knowledge: 'Knowledge Library',
         health: 'Agent Health',
+        'clinical-intake': 'Clinical Advisor Intake',
         audit: 'Audit Log'
     };
     document.getElementById('page-title').textContent = titles[sectionId] || 'Dashboard';
-    
+
     // Show/hide practice selector
-    const showSelector = ['knowledge', 'health'].includes(sectionId);
-    document.getElementById('practice-selector-container').style.display = 
+    const showSelector = ['knowledge', 'health', 'clinical-intake'].includes(sectionId);
+    document.getElementById('practice-selector-container').style.display =
         showSelector ? 'block' : 'none';
-    
+
     // Load section data
     if (sectionId === 'practices') {
         loadPractices();
@@ -193,6 +197,8 @@ function navigateToSection(sectionId) {
         loadKnowledgeLibrary();
     } else if (sectionId === 'health' && currentPracticeId) {
         loadHealth();
+    } else if (sectionId === 'clinical-intake' && currentPracticeId) {
+        loadClinicalConfig();
     } else if (sectionId === 'audit') {
         loadAuditLog();
     }
@@ -856,6 +862,281 @@ async function loadAuditLog() {
 }
 
 // =============================================================================
+// Clinical Intake
+// =============================================================================
+
+async function loadClinicalConfig() {
+    if (!currentPracticeId) {
+        showToast('Please select a practice first', 'warning');
+        return;
+    }
+
+    // Show loading state
+    document.getElementById('injection-preview').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+    try {
+        const data = await apiCall(`/practices/${currentPracticeId}/clinical-config`);
+
+        // Update status bar
+        document.getElementById('config-version').textContent = data.profile_version || '--';
+        document.getElementById('config-tokens').textContent = data.estimated_tokens || '--';
+        document.getElementById('config-updated').textContent = data.updated_at ? formatDate(data.updated_at) : 'Never';
+
+        // Populate form if config exists
+        if (data.config) {
+            populateClinicalForm(data.config);
+        } else {
+            resetClinicalForm();
+        }
+
+        // Update preview
+        if (data.injection_preview) {
+            document.getElementById('injection-preview').textContent = data.injection_preview;
+            document.getElementById('preview-chars').textContent = data.injection_preview.length;
+            document.getElementById('preview-tokens').textContent = data.estimated_tokens || 0;
+        } else {
+            document.getElementById('injection-preview').innerHTML = '<p class="preview-placeholder">No configuration yet. Fill out the form and save to generate.</p>';
+            document.getElementById('preview-chars').textContent = '0';
+            document.getElementById('preview-tokens').textContent = '0';
+        }
+
+    } catch (error) {
+        showToast('Error loading clinical config: ' + error.message, 'error');
+        document.getElementById('injection-preview').innerHTML = '<p class="preview-placeholder">Error loading configuration.</p>';
+    }
+}
+
+function populateClinicalForm(config) {
+    // Philosophy section
+    if (config.philosophy) {
+        document.getElementById('primary-bias').value = config.philosophy.primary_bias || 'agd';
+        document.getElementById('secondary-bias').value = config.philosophy.secondary_bias || '';
+        document.getElementById('bias-strength').value = config.philosophy.bias_strength || 'moderate';
+        document.getElementById('philosophy-context').value = config.philosophy.additional_context || '';
+        updateCharCount('philosophy-context');
+    }
+
+    // Procedures section
+    if (config.procedures_in_house) {
+        const proc = config.procedures_in_house;
+
+        // Endodontics checkboxes
+        setCheckboxGroup('endo', proc.endodontics || []);
+
+        // Extractions checkboxes
+        setCheckboxGroup('extractions', proc.extractions || []);
+
+        // Implants select
+        document.getElementById('implants').value = proc.implants || 'not_performed';
+
+        // Sedation checkboxes
+        setCheckboxGroup('sedation', proc.sedation || []);
+
+        // Pediatric
+        if (proc.pediatric) {
+            document.getElementById('pediatric-min-age').value = proc.pediatric.min_age || '';
+            document.getElementById('pediatric-limited').checked = proc.pediatric.limited || false;
+            document.getElementById('pediatric-referred').checked = proc.pediatric.referred || false;
+        }
+
+        // Other services
+        setCheckboxGroup('other-services', proc.other_services || []);
+    }
+
+    // Equipment section
+    if (config.equipment_technology) {
+        const equip = config.equipment_technology;
+        setCheckboxGroup('imaging', equip.imaging || []);
+        setCheckboxGroup('digital', equip.digital_dentistry || []);
+        document.getElementById('equipment-limitations').value = equip.limitations || '';
+    }
+
+    // Team section
+    if (config.team_experience) {
+        const team = config.team_experience;
+        document.getElementById('provider-years').value = team.provider_years || '';
+        document.getElementById('team-stability').value = team.team_stability || '';
+        document.getElementById('hygiene-model').value = team.hygiene_model || '';
+    }
+
+    // Referral section
+    if (config.referral_philosophy) {
+        const ref = config.referral_philosophy;
+        setCheckboxGroup('referral-reasons', ref.primary_reasons || []);
+        document.getElementById('referral-view').value = ref.view || '';
+    }
+
+    // Risk section
+    if (config.risk_sensitivity) {
+        const risk = config.risk_sensitivity;
+        document.getElementById('documentation-level').value = risk.documentation_level || '';
+        setCheckboxGroup('caution-areas', risk.extra_caution_areas || []);
+    }
+
+    // Operational section
+    if (config.operational_preferences) {
+        const ops = config.operational_preferences;
+        document.getElementById('treatment-approach').value = ops.treatment_approach || '';
+        document.getElementById('case-complexity').value = ops.case_complexity || '';
+    }
+
+    // Additional notes
+    document.getElementById('additional-notes').value = config.additional_notes || '';
+    updateCharCount('additional-notes');
+}
+
+function resetClinicalForm() {
+    document.getElementById('clinical-intake-form').reset();
+    document.getElementById('philosophy-context-count').textContent = '0';
+    document.getElementById('additional-notes-count').textContent = '0';
+}
+
+function setCheckboxGroup(name, values) {
+    document.querySelectorAll(`input[name="${name}"]`).forEach(cb => {
+        cb.checked = values.includes(cb.value);
+    });
+}
+
+function getCheckboxGroup(name) {
+    const values = [];
+    document.querySelectorAll(`input[name="${name}"]:checked`).forEach(cb => {
+        values.push(cb.value);
+    });
+    return values;
+}
+
+function collectClinicalConfig() {
+    return {
+        philosophy: {
+            primary_bias: document.getElementById('primary-bias').value,
+            secondary_bias: document.getElementById('secondary-bias').value || null,
+            bias_strength: document.getElementById('bias-strength').value,
+            additional_context: document.getElementById('philosophy-context').value || null
+        },
+        procedures_in_house: {
+            endodontics: getCheckboxGroup('endo'),
+            extractions: getCheckboxGroup('extractions'),
+            implants: document.getElementById('implants').value,
+            sedation: getCheckboxGroup('sedation'),
+            pediatric: {
+                min_age: parseInt(document.getElementById('pediatric-min-age').value) || null,
+                limited: document.getElementById('pediatric-limited').checked,
+                referred: document.getElementById('pediatric-referred').checked
+            },
+            other_services: getCheckboxGroup('other-services')
+        },
+        equipment_technology: {
+            imaging: getCheckboxGroup('imaging'),
+            digital_dentistry: getCheckboxGroup('digital'),
+            other: [],
+            limitations: document.getElementById('equipment-limitations').value || null
+        },
+        team_experience: {
+            provider_years: document.getElementById('provider-years').value || null,
+            team_stability: document.getElementById('team-stability').value || null,
+            hygiene_model: document.getElementById('hygiene-model').value || null
+        },
+        referral_philosophy: {
+            primary_reasons: getCheckboxGroup('referral-reasons'),
+            view: document.getElementById('referral-view').value || null
+        },
+        risk_sensitivity: {
+            documentation_level: document.getElementById('documentation-level').value || null,
+            extra_caution_areas: getCheckboxGroup('caution-areas')
+        },
+        operational_preferences: {
+            treatment_approach: document.getElementById('treatment-approach').value || null,
+            case_complexity: document.getElementById('case-complexity').value || null
+        },
+        additional_notes: document.getElementById('additional-notes').value || null
+    };
+}
+
+async function saveClinicalConfig() {
+    if (!currentPracticeId) {
+        showToast('Please select a practice first', 'warning');
+        return;
+    }
+
+    const saveBtn = document.getElementById('save-clinical-config-btn');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    saveBtn.disabled = true;
+
+    try {
+        const config = collectClinicalConfig();
+
+        const result = await apiCall(
+            `/practices/${currentPracticeId}/clinical-config`,
+            'PUT',
+            { config }
+        );
+
+        showToast('Clinical configuration saved successfully', 'success');
+
+        // Update UI
+        document.getElementById('config-version').textContent = result.profile_version;
+        document.getElementById('config-tokens').textContent = result.estimated_tokens;
+        document.getElementById('config-updated').textContent = formatDate(new Date().toISOString());
+
+        // Update preview
+        document.getElementById('injection-preview').textContent = result.injection_preview;
+        document.getElementById('preview-chars').textContent = result.injection_preview.length;
+        document.getElementById('preview-tokens').textContent = result.estimated_tokens;
+
+    } catch (error) {
+        showToast('Error saving configuration: ' + error.message, 'error');
+    } finally {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+    }
+}
+
+async function regenerateSummary() {
+    if (!currentPracticeId) {
+        showToast('Please select a practice first', 'warning');
+        return;
+    }
+
+    const regenBtn = document.getElementById('regenerate-summary-btn');
+    const originalText = regenBtn.innerHTML;
+    regenBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Regenerating...';
+    regenBtn.disabled = true;
+
+    try {
+        const result = await apiCall(
+            `/practices/${currentPracticeId}/clinical-config/regenerate`,
+            'POST'
+        );
+
+        showToast('Injection summary regenerated', 'success');
+
+        // Update UI
+        document.getElementById('config-version').textContent = result.profile_version;
+        document.getElementById('config-tokens').textContent = result.estimated_tokens;
+
+        // Update preview
+        document.getElementById('injection-preview').textContent = result.injection_preview;
+        document.getElementById('preview-chars').textContent = result.injection_preview.length;
+        document.getElementById('preview-tokens').textContent = result.estimated_tokens;
+
+    } catch (error) {
+        showToast('Error regenerating summary: ' + error.message, 'error');
+    } finally {
+        regenBtn.innerHTML = originalText;
+        regenBtn.disabled = false;
+    }
+}
+
+function updateCharCount(textareaId) {
+    const textarea = document.getElementById(textareaId);
+    const countEl = document.getElementById(`${textareaId}-count`);
+    if (textarea && countEl) {
+        countEl.textContent = textarea.value.length;
+    }
+}
+
+// =============================================================================
 // Event Listeners
 // =============================================================================
 
@@ -895,6 +1176,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadKnowledgeLibrary();
             } else if (activeSection.id === 'health-section') {
                 loadHealth();
+            } else if (activeSection.id === 'clinical-intake-section') {
+                loadClinicalConfig();
             }
         }
     });
@@ -908,11 +1191,35 @@ document.addEventListener('DOMContentLoaded', () => {
             loadKnowledgeLibrary();
         } else if (activeSection.id === 'health-section') {
             loadHealth();
+        } else if (activeSection.id === 'clinical-intake-section') {
+            loadClinicalConfig();
         } else if (activeSection.id === 'audit-section') {
             loadAuditLog();
         }
         showToast('Refreshed', 'info');
     });
+
+    // Clinical Intake buttons
+    const saveClinicalBtn = document.getElementById('save-clinical-config-btn');
+    if (saveClinicalBtn) {
+        saveClinicalBtn.addEventListener('click', saveClinicalConfig);
+    }
+
+    const regenSummaryBtn = document.getElementById('regenerate-summary-btn');
+    if (regenSummaryBtn) {
+        regenSummaryBtn.addEventListener('click', regenerateSummary);
+    }
+
+    // Character count updates for textareas
+    const philosophyContext = document.getElementById('philosophy-context');
+    if (philosophyContext) {
+        philosophyContext.addEventListener('input', () => updateCharCount('philosophy-context'));
+    }
+
+    const additionalNotes = document.getElementById('additional-notes');
+    if (additionalNotes) {
+        additionalNotes.addEventListener('input', () => updateCharCount('additional-notes'));
+    }
     
     // Re-index all
     document.getElementById('reindex-all-btn').addEventListener('click', reindexAllDocuments);

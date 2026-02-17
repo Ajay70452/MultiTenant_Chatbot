@@ -147,3 +147,35 @@ class AuditLog(Base):
     result = Column(String(20), nullable=False, default='success')  # success, failure
     details = Column(JSON, nullable=True)  # Additional context (file names, error messages, etc.)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
+
+# ===================== Clinical Session Models =====================
+
+class ClinicalSession(Base):
+    """Persistent chat sessions for the Clinical Advisor (Door 2)."""
+    __tablename__ = 'clinical_sessions'
+
+    session_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(UUID(as_uuid=True), ForeignKey('clients.client_id'), nullable=False, index=True)
+    title = Column(String(200), nullable=False, default='New conversation')
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+
+    messages = relationship("ClinicalChatLog", back_populates="session", order_by="ClinicalChatLog.created_at")
+    client = relationship("Client", backref="clinical_sessions")
+
+
+class ClinicalChatLog(Base):
+    """Individual messages within a clinical session."""
+    __tablename__ = 'clinical_chat_logs'
+
+    log_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    session_id = Column(UUID(as_uuid=True), ForeignKey('clinical_sessions.session_id'), nullable=False, index=True)
+    sender_type = Column(String(10), nullable=False)  # 'user' or 'assistant'
+    message = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    response_time_ms = Column(Integer, nullable=True)
+    metadata_json = Column(JSON, nullable=True)
+
+    session = relationship("ClinicalSession", back_populates="messages")

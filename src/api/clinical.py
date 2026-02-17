@@ -38,7 +38,7 @@ from src.api.dependencies import (
 from src.core.db import get_db
 from src.core import state_manager, rag_engine
 from src.core.agent import get_clinical_response
-from src.models.models import Client
+from src.models.models import Client, ClinicalSession, ClinicalChatLog
 
 logger = logging.getLogger(__name__)
 
@@ -349,15 +349,28 @@ class ClinicalChatRequest(BaseModel):
     )
     image_base64: Optional[str] = Field(
         None,
-        description="Optional Base64-encoded image (e.g., X-ray) for analysis. "
-                    "Should include the data URI prefix (e.g., 'data:image/png;base64,...')"
+        description="(Legacy) Single Base64-encoded image. Use images_base64 for multiple images. "
+                    "If both are provided, images_base64 takes precedence."
+    )
+    images_base64: Optional[List[str]] = Field(
+        None,
+        max_length=5,
+        description="Optional list of Base64-encoded images (e.g., X-rays) for analysis. "
+                    "Maximum 5 images per message. Each should include the data URI prefix "
+                    "(e.g., 'data:image/png;base64,...')"
     )
     conversation_history: Optional[List[ClinicalMessage]] = Field(
         default=[],
         max_length=MAX_CONVERSATION_HISTORY_LENGTH,
         description="Previous messages in the conversation for context. "
                     f"Maximum {MAX_CONVERSATION_HISTORY_LENGTH} messages. "
-                    "Since this endpoint is stateless, the client must maintain history."
+                    "Ignored when session_id is provided (server loads history from DB)."
+    )
+    session_id: Optional[str] = Field(
+        None,
+        description="Optional session ID for persistent sessions. If provided, messages "
+                    "are stored server-side and conversation_history is loaded from the "
+                    "database. If omitted, behaves as stateless (backward compatible)."
     )
 
     @field_validator('message')
@@ -397,7 +410,7 @@ class ClinicalChatRequest(BaseModel):
     @field_validator('image_base64')
     @classmethod
     def validate_image_base64(cls, v: Optional[str]) -> Optional[str]:
-        """Validate image base64 format."""
+        """Validate image base64 format (legacy single-image field)."""
         if v is None:
             return v
 
@@ -415,6 +428,29 @@ class ClinicalChatRequest(BaseModel):
             raise ValueError("Image data appears too short to be valid")
 
         return v
+
+    @field_validator('images_base64')
+    @classmethod
+    def validate_images_base64(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        """Validate each image in the images list."""
+        if v is None:
+            return v
+
+        if len(v) > 5:
+            raise ValueError("Maximum 5 images per message")
+
+        validated = []
+        for i, img in enumerate(v):
+            if '\0' in img:
+                raise ValueError(f"Image {i+1} contains invalid characters")
+            if img.startswith('data:image/'):
+                if ';base64,' not in img:
+                    raise ValueError(f"Image {i+1}: Invalid data URI format. Expected 'data:image/...;base64,...'")
+            elif len(img) < 100:
+                raise ValueError(f"Image {i+1} data appears too short to be valid")
+            validated.append(img)
+
+        return validated
 
     @field_validator('conversation_history')
     @classmethod
@@ -443,12 +479,14 @@ class ClinicalChatRequest(BaseModel):
 class ClinicalChatResponse(BaseModel):
     """Response schema for the Clinical Advisor endpoint."""
     response: str = Field(..., description="The clinical advisor's response")
-    client_id: str = Field(..., description="The a" \
-    "" \
-    "uthenticated client's ID")
+    client_id: str = Field(..., description="The authenticated client's ID")
     has_image: bool = Field(
         default=False,
-        description="Whether the request included an image for analysis"
+        description="Whether the request included at least one image for analysis"
+    )
+    image_count: int = Field(
+        default=0,
+        description="Number of images included in the request"
     )
     confidence_level: str = Field(
         default="moderate",
@@ -462,6 +500,46 @@ class ClinicalChatResponse(BaseModel):
         default=[],
         description="Any safety concerns or warnings identified by the AI"
     )
+    session_id: Optional[str] = Field(
+        None,
+        description="The session ID if persistent session mode was used"
+    )
+    debug_info: Optional[dict] = Field(
+        None,
+        description="Temporary debug info for image processing diagnostics"
+    )
+
+
+# =============================================================================
+# Session Management Schemas
+# =============================================================================
+
+class SessionListItem(BaseModel):
+    """Summary of a clinical session for the list view."""
+    session_id: str
+    title: str
+    created_at: str
+    updated_at: str
+    message_count: int
+
+
+class SessionListResponse(BaseModel):
+    """Response for listing clinical sessions."""
+    sessions: List[SessionListItem]
+
+
+class SessionDetailResponse(BaseModel):
+    """Full session detail with message history."""
+    session_id: str
+    title: str
+    created_at: str
+    updated_at: str
+    messages: List[dict]
+
+
+class SessionRenameRequest(BaseModel):
+    """Request to rename a session."""
+    title: str = Field(..., min_length=1, max_length=200)
 
 
 # =============================================================================
@@ -568,21 +646,31 @@ async def clinical_chat(
     """
     Handle a clinical advisor chat message.
 
-    Args:
-        request: The chat request containing message, optional image, and history
-        client: The authenticated client (injected via dependency)
-        db: Database session (injected via dependency)
-
-    Returns:
-        ClinicalChatResponse with the advisor's response
+    Supports two modes:
+    - Stateless (no session_id): client sends conversation_history, nothing persisted
+    - Persistent (session_id provided): messages stored in DB, history loaded server-side
     """
+    import datetime as _dt
+
+    start_time = time.time()
+
+    # Merge legacy single-image field into images list
+    images_base64 = request.images_base64
+    if not images_base64 and request.image_base64:
+        images_base64 = [request.image_base64]
+
+    image_count = len(images_base64) if images_base64 else 0
+    has_image = image_count > 0
+
     logger.info(
         f"Clinical chat request from client: {client.client_id}",
         extra={
             'client_id': str(client.client_id),
             'clinic_name': client.clinic_name,
-            'has_image': request.image_base64 is not None,
-            'history_length': len(request.conversation_history or [])
+            'has_image': has_image,
+            'image_count': image_count,
+            'history_length': len(request.conversation_history or []),
+            'session_id': request.session_id
         }
     )
 
@@ -596,25 +684,69 @@ async def clinical_chat(
             detail="Practice profile not configured. Please contact support to set up your clinical profile."
         )
 
-    has_image = request.image_base64 is not None
+    # --- Session handling ---
+    session = None
+    session_id_out = None
 
-    # Convert conversation history to the format expected by the agent
-    conversation_history = None
-    if request.conversation_history:
+    if request.session_id:
+        # Persistent mode: load or create session
+        import uuid as _uuid
+        try:
+            sid = _uuid.UUID(request.session_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid session_id format")
+
+        session = db.query(ClinicalSession).filter(
+            ClinicalSession.session_id == sid,
+            ClinicalSession.client_id == client.client_id,
+            ClinicalSession.is_deleted == False
+        ).first()
+
+        if not session:
+            session = ClinicalSession(
+                session_id=sid,
+                client_id=client.client_id,
+                title=request.message[:80] if request.message else "New conversation"
+            )
+            db.add(session)
+            db.flush()
+
+        session_id_out = str(session.session_id)
+
+        # Load history from DB (ignore client-sent history)
+        db_messages = db.query(ClinicalChatLog).filter(
+            ClinicalChatLog.session_id == session.session_id
+        ).order_by(ClinicalChatLog.created_at).all()
+
         conversation_history = [
-            {"role": msg.role, "content": msg.content}
-            for msg in request.conversation_history
+            {"role": "user" if m.sender_type == "user" else "assistant", "content": m.message}
+            for m in db_messages
         ]
 
+        # Store the user's message
+        user_log = ClinicalChatLog(
+            session_id=session.session_id,
+            sender_type='user',
+            message=request.message
+        )
+        db.add(user_log)
+        db.flush()
+    else:
+        # Legacy stateless mode: use client-sent history
+        conversation_history = None
+        if request.conversation_history:
+            conversation_history = [
+                {"role": msg.role, "content": msg.content}
+                for msg in request.conversation_history
+            ]
+
     # Retrieve RAG context from Pinecone for the user's message
-    # Wrapped in try-catch for defense in depth (RAG engine also handles errors internally)
     try:
         rag_context = rag_engine.get_relevant_context(
             query=request.message,
             client_id=str(client.client_id)
         )
     except Exception as e:
-        # Log error but continue without RAG context - graceful degradation
         logger.error(
             f"RAG retrieval failed for client {client.client_id}: {e}",
             extra={'client_id': str(client.client_id), 'error': str(e)}
@@ -630,12 +762,12 @@ async def clinical_chat(
         }
     )
 
-    # Call the clinical agent with both practice profile and RAG context
+    # Call the clinical agent
     agent_response = await get_clinical_response(
         user_message=request.message,
         practice_profile=practice_profile,
         conversation_history=conversation_history,
-        image_base64=request.image_base64,
+        images_base64=images_base64,
         rag_context=rag_context,
         clinic_name=client.clinic_name
     )
@@ -650,16 +782,51 @@ async def clinical_chat(
         }
     )
 
-    # Return response with all metadata
-    # NOTE: This endpoint is STATELESS - no state machine, no stage transitions
-    # The client (Ahsuite iframe) is responsible for maintaining conversation history
+    # --- Store assistant message if persistent session ---
+    if session:
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        assistant_log = ClinicalChatLog(
+            session_id=session.session_id,
+            sender_type='assistant',
+            message=agent_response.get("response_text", ""),
+            response_time_ms=elapsed_ms,
+            metadata_json={
+                "confidence_level": agent_response.get("confidence_level"),
+                "requires_referral": agent_response.get("requires_referral"),
+                "safety_warnings": agent_response.get("safety_warnings", []),
+                "has_image": has_image,
+                "image_count": image_count,
+            }
+        )
+        db.add(assistant_log)
+
+        # Auto-title from first user message
+        if session.title == 'New conversation':
+            session.title = request.message[:80]
+
+        session.updated_at = _dt.datetime.utcnow()
+        db.commit()
+
+    # Build debug info combining endpoint + agent debug data
+    endpoint_debug = {
+        "endpoint_images_base64_is_none": images_base64 is None,
+        "endpoint_image_count": image_count,
+        "endpoint_request_images_base64_is_none": request.images_base64 is None,
+        "endpoint_request_image_base64_is_none": request.image_base64 is None,
+    }
+    agent_debug = agent_response.get("_debug", {})
+    combined_debug = {**endpoint_debug, **agent_debug}
+
     return ClinicalChatResponse(
         response=agent_response.get("response_text", ""),
         client_id=str(client.client_id),
         has_image=has_image,
+        image_count=image_count,
         confidence_level=agent_response.get("confidence_level", "moderate"),
         requires_referral=agent_response.get("requires_referral", False),
-        safety_warnings=agent_response.get("safety_warnings", [])
+        safety_warnings=agent_response.get("safety_warnings", []),
+        session_id=session_id_out,
+        debug_info=combined_debug,
     )
 
  
@@ -715,8 +882,149 @@ async def get_profile(
     if profile:
         response["profile_configured"] = True
         response["profile_sections"] = list(profile.keys()) if isinstance(profile, dict) else []
+        # Allow practices to customize the agent display name
+        response["agent_name"] = profile.get("agent_name", "Clinical Advisor") if isinstance(profile, dict) else "Clinical Advisor"
     else:
         response["profile_configured"] = False
         response["profile_sections"] = []
+        response["agent_name"] = "Clinical Advisor"
 
     return response
+
+
+# =============================================================================
+# Session Management Endpoints
+# =============================================================================
+
+@router.get(
+    "/sessions",
+    response_model=SessionListResponse,
+    summary="List Clinical Sessions",
+    description="List all chat sessions for the authenticated client, ordered by most recent."
+)
+async def list_sessions(
+    client: Client = Depends(require_client_token),
+    db: Session = Depends(get_db),
+) -> SessionListResponse:
+    """List all non-deleted clinical sessions for the authenticated client."""
+    from sqlalchemy import func
+
+    results = db.query(
+        ClinicalSession,
+        func.count(ClinicalChatLog.log_id).label('message_count')
+    ).outerjoin(ClinicalChatLog).filter(
+        ClinicalSession.client_id == client.client_id,
+        ClinicalSession.is_deleted == False
+    ).group_by(ClinicalSession.session_id).order_by(
+        ClinicalSession.updated_at.desc()
+    ).all()
+
+    return SessionListResponse(
+        sessions=[
+            SessionListItem(
+                session_id=str(row.ClinicalSession.session_id),
+                title=row.ClinicalSession.title,
+                created_at=row.ClinicalSession.created_at.isoformat(),
+                updated_at=row.ClinicalSession.updated_at.isoformat(),
+                message_count=row.message_count
+            )
+            for row in results
+        ]
+    )
+
+
+@router.get(
+    "/sessions/{session_id}",
+    response_model=SessionDetailResponse,
+    summary="Get Session History",
+    description="Load the full message history for a specific chat session."
+)
+async def get_session(
+    session_id: str,
+    client: Client = Depends(require_client_token),
+    db: Session = Depends(get_db),
+) -> SessionDetailResponse:
+    """Load full message history for a session."""
+    session = db.query(ClinicalSession).filter(
+        ClinicalSession.session_id == session_id,
+        ClinicalSession.client_id == client.client_id,
+        ClinicalSession.is_deleted == False
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    messages = db.query(ClinicalChatLog).filter(
+        ClinicalChatLog.session_id == session.session_id
+    ).order_by(ClinicalChatLog.created_at).all()
+
+    return SessionDetailResponse(
+        session_id=str(session.session_id),
+        title=session.title,
+        created_at=session.created_at.isoformat(),
+        updated_at=session.updated_at.isoformat(),
+        messages=[
+            {
+                "role": m.sender_type if m.sender_type == "user" else "assistant",
+                "content": m.message,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+                "metadata": m.metadata_json
+            }
+            for m in messages
+        ]
+    )
+
+
+@router.patch(
+    "/sessions/{session_id}",
+    summary="Rename Session",
+    description="Rename a clinical chat session."
+)
+async def rename_session(
+    session_id: str,
+    request: SessionRenameRequest,
+    client: Client = Depends(require_client_token),
+    db: Session = Depends(get_db),
+    _origin_check: None = Depends(validate_origin)
+) -> dict:
+    """Rename a clinical session."""
+    session = db.query(ClinicalSession).filter(
+        ClinicalSession.session_id == session_id,
+        ClinicalSession.client_id == client.client_id,
+        ClinicalSession.is_deleted == False
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session.title = request.title
+    db.commit()
+
+    return {"session_id": str(session.session_id), "title": session.title}
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    summary="Delete Session",
+    description="Soft-delete a clinical chat session."
+)
+async def delete_session(
+    session_id: str,
+    client: Client = Depends(require_client_token),
+    db: Session = Depends(get_db),
+    _origin_check: None = Depends(validate_origin)
+) -> dict:
+    """Soft-delete a clinical session."""
+    session = db.query(ClinicalSession).filter(
+        ClinicalSession.session_id == session_id,
+        ClinicalSession.client_id == client.client_id,
+        ClinicalSession.is_deleted == False
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session.is_deleted = True
+    db.commit()
+
+    return {"deleted": True, "session_id": str(session.session_id)}

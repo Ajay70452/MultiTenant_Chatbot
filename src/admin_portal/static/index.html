@@ -278,9 +278,6 @@
                     <div class="section-header">
                         <h2>Clinical Advisor Intake</h2>
                         <div class="section-actions">
-                            <button class="btn btn-secondary" id="regenerate-summary-btn">
-                                <i class="fas fa-sync"></i> Regenerate Summary
-                            </button>
                             <button class="btn btn-primary" id="save-clinical-config-btn">
                                 <i class="fas fa-save"></i> Save Configuration
                             </button>
@@ -292,10 +289,6 @@
                         <div class="status-item">
                             <span class="status-label">Profile Version:</span>
                             <span class="status-value" id="config-version">--</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-label">Estimated Tokens:</span>
-                            <span class="status-value" id="config-tokens">--</span>
                         </div>
                         <div class="status-item">
                             <span class="status-label">Last Updated:</span>
@@ -636,21 +629,6 @@
                                     </div>
                                 </div>
                             </form>
-                        </div>
-
-                        <!-- Right Column: Preview -->
-                        <div class="intake-preview-column">
-                            <div class="preview-sticky">
-                                <h3><i class="fas fa-eye"></i> Injection Preview</h3>
-                                <p class="preview-description">This is the text that will be injected into the Clinical Advisor prompt.</p>
-                                <div class="injection-preview" id="injection-preview">
-                                    <p class="preview-placeholder">Select a practice and the preview will appear here...</p>
-                                </div>
-                                <div class="preview-stats">
-                                    <span><i class="fas fa-text-width"></i> <span id="preview-chars">0</span> chars</span>
-                                    <span><i class="fas fa-coins"></i> ~<span id="preview-tokens">0</span> tokens</span>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </section>

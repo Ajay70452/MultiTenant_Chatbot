@@ -871,15 +871,11 @@ async function loadClinicalConfig() {
         return;
     }
 
-    // Show loading state
-    document.getElementById('injection-preview').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-
     try {
         const data = await apiCall(`/practices/${currentPracticeId}/clinical-config`);
 
         // Update status bar
         document.getElementById('config-version').textContent = data.profile_version || '--';
-        document.getElementById('config-tokens').textContent = data.estimated_tokens || '--';
         document.getElementById('config-updated').textContent = data.updated_at ? formatDate(data.updated_at) : 'Never';
 
         // Populate form if config exists
@@ -889,20 +885,8 @@ async function loadClinicalConfig() {
             resetClinicalForm();
         }
 
-        // Update preview
-        if (data.injection_preview) {
-            document.getElementById('injection-preview').textContent = data.injection_preview;
-            document.getElementById('preview-chars').textContent = data.injection_preview.length;
-            document.getElementById('preview-tokens').textContent = data.estimated_tokens || 0;
-        } else {
-            document.getElementById('injection-preview').innerHTML = '<p class="preview-placeholder">No configuration yet. Fill out the form and save to generate.</p>';
-            document.getElementById('preview-chars').textContent = '0';
-            document.getElementById('preview-tokens').textContent = '0';
-        }
-
     } catch (error) {
         showToast('Error loading clinical config: ' + error.message, 'error');
-        document.getElementById('injection-preview').innerHTML = '<p class="preview-placeholder">Error loading configuration.</p>';
     }
 }
 
@@ -1076,55 +1060,13 @@ async function saveClinicalConfig() {
 
         // Update UI
         document.getElementById('config-version').textContent = result.profile_version;
-        document.getElementById('config-tokens').textContent = result.estimated_tokens;
         document.getElementById('config-updated').textContent = formatDate(new Date().toISOString());
-
-        // Update preview
-        document.getElementById('injection-preview').textContent = result.injection_preview;
-        document.getElementById('preview-chars').textContent = result.injection_preview.length;
-        document.getElementById('preview-tokens').textContent = result.estimated_tokens;
 
     } catch (error) {
         showToast('Error saving configuration: ' + error.message, 'error');
     } finally {
         saveBtn.innerHTML = originalText;
         saveBtn.disabled = false;
-    }
-}
-
-async function regenerateSummary() {
-    if (!currentPracticeId) {
-        showToast('Please select a practice first', 'warning');
-        return;
-    }
-
-    const regenBtn = document.getElementById('regenerate-summary-btn');
-    const originalText = regenBtn.innerHTML;
-    regenBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Regenerating...';
-    regenBtn.disabled = true;
-
-    try {
-        const result = await apiCall(
-            `/practices/${currentPracticeId}/clinical-config/regenerate`,
-            'POST'
-        );
-
-        showToast('Injection summary regenerated', 'success');
-
-        // Update UI
-        document.getElementById('config-version').textContent = result.profile_version;
-        document.getElementById('config-tokens').textContent = result.estimated_tokens;
-
-        // Update preview
-        document.getElementById('injection-preview').textContent = result.injection_preview;
-        document.getElementById('preview-chars').textContent = result.injection_preview.length;
-        document.getElementById('preview-tokens').textContent = result.estimated_tokens;
-
-    } catch (error) {
-        showToast('Error regenerating summary: ' + error.message, 'error');
-    } finally {
-        regenBtn.innerHTML = originalText;
-        regenBtn.disabled = false;
     }
 }
 
@@ -1203,11 +1145,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveClinicalBtn = document.getElementById('save-clinical-config-btn');
     if (saveClinicalBtn) {
         saveClinicalBtn.addEventListener('click', saveClinicalConfig);
-    }
-
-    const regenSummaryBtn = document.getElementById('regenerate-summary-btn');
-    if (regenSummaryBtn) {
-        regenSummaryBtn.addEventListener('click', regenerateSummary);
     }
 
     // Character count updates for textareas

@@ -33,7 +33,7 @@ from src.admin_portal.schemas import (
     ClinicalAdvisorConfig,
     ClinicalConfigResponse,
     ClinicalConfigUpdateRequest,
-    ClinicalConfigUpdateResponse
+    ClinicalConfigUpdateResponse,
 )
 from src.admin_portal.services import (
     PracticeService,
@@ -698,13 +698,9 @@ async def get_clinical_config(
 ):
     """
     Get the clinical advisor configuration from the practice profile.
-
-    Returns the current config along with a preview of the generated
-    injection summary and estimated token count.
     """
     from uuid import UUID
     from src.models.models import Client, PracticeProfile
-    from src.core.prompts.injection_builder import build_profile_injection
 
     # Get client info
     try:
@@ -729,16 +725,12 @@ async def get_clinical_config(
 
     config = None
     profile_version = 0
-    has_cached_summary = False
-    injection_preview = None
-    estimated_tokens = None
     updated_at = None
 
     if profile and profile.profile_json:
         profile_json = profile.profile_json
         config_dict = profile_json.get("clinical_advisor_config")
         profile_version = profile_json.get("clinical_advisor_profile_version", 0)
-        has_cached_summary = "clinical_advisor_profile_summary" in profile_json
         updated_at = profile.updated_at
 
         if config_dict:
@@ -748,12 +740,6 @@ async def get_clinical_config(
             except Exception as e:
                 logger.warning(f"Failed to parse clinical config: {e}")
                 config = None
-
-        # Generate injection preview
-        if config_dict:
-            result = build_profile_injection(config_dict, client.clinic_name)
-            injection_preview = result.summary
-            estimated_tokens = result.estimated_tokens
 
     log_admin_action(
         action="view_clinical_config",
@@ -767,9 +753,6 @@ async def get_clinical_config(
         practice_name=client.clinic_name,
         config=config,
         profile_version=profile_version,
-        has_cached_summary=has_cached_summary,
-        injection_preview=injection_preview,
-        estimated_tokens=estimated_tokens,
         updated_at=updated_at
     )
 
@@ -791,12 +774,10 @@ async def update_clinical_config(
 
     This will:
     1. Store the config in practice_profiles.profile_json.clinical_advisor_config
-    2. Generate and cache the injection summary
-    3. Bump the profile version
+    2. Bump the profile version
     """
     from uuid import UUID
     from src.models.models import Client, PracticeProfile
-    from src.core.prompts.injection_builder import build_profile_injection
     import datetime
 
     # Validate practice ID
@@ -831,9 +812,6 @@ async def update_clinical_config(
     # Convert Pydantic model to dict
     config_dict = request.config.model_dump(exclude_none=False)
 
-    # Build injection summary
-    result = build_profile_injection(config_dict, client.clinic_name)
-
     # Get current version and increment
     current_version = (profile.profile_json or {}).get("clinical_advisor_profile_version", 0)
     new_version = current_version + 1
@@ -841,7 +819,6 @@ async def update_clinical_config(
     # Update profile_json
     profile_json = profile.profile_json or {}
     profile_json["clinical_advisor_config"] = config_dict
-    profile_json["clinical_advisor_profile_summary"] = result.summary
     profile_json["clinical_advisor_profile_version"] = new_version
 
     profile.profile_json = profile_json
@@ -856,7 +833,6 @@ async def update_clinical_config(
         practice_id=practice_id,
         details={
             "new_version": new_version,
-            "estimated_tokens": result.estimated_tokens,
             "primary_bias": config_dict.get("philosophy", {}).get("primary_bias")
         }
     )
@@ -865,100 +841,8 @@ async def update_clinical_config(
         status="success",
         message="Clinical advisor configuration updated successfully",
         practice_id=practice_id,
-        profile_version=new_version,
-        injection_preview=result.summary,
-        estimated_tokens=result.estimated_tokens
+        profile_version=new_version
     )
 
 
-@admin_portal_router.post(
-    "/practices/{practice_id}/clinical-config/regenerate",
-    response_model=ClinicalConfigUpdateResponse,
-    summary="Regenerate Injection Summary",
-    description="Force regeneration of the injection summary from existing config."
-)
-async def regenerate_injection_summary(
-    practice_id: str,
-    admin: AdminUser = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    """
-    Force regenerate the injection summary from the existing clinical config.
-
-    Use this after updating the injection builder logic to refresh cached summaries.
-    """
-    from uuid import UUID
-    from src.models.models import Client, PracticeProfile
-    from src.core.prompts.injection_builder import build_profile_injection
-    import datetime
-
-    # Validate practice ID
-    try:
-        client_uuid = UUID(practice_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid practice ID format"
-        )
-
-    # Get client
-    client = db.query(Client).filter(Client.client_id == client_uuid).first()
-    if not client:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Practice not found"
-        )
-
-    # Get practice profile
-    profile = db.query(PracticeProfile).filter(
-        PracticeProfile.practice_id == client_uuid
-    ).first()
-
-    if not profile or not profile.profile_json:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Practice profile not found"
-        )
-
-    config_dict = profile.profile_json.get("clinical_advisor_config")
-    if not config_dict:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No clinical advisor config found. Please create one first."
-        )
-
-    # Regenerate injection summary
-    result = build_profile_injection(config_dict, client.clinic_name)
-
-    # Update version and cache
-    current_version = profile.profile_json.get("clinical_advisor_profile_version", 0)
-    new_version = current_version + 1
-
-    profile_json = profile.profile_json
-    profile_json["clinical_advisor_profile_summary"] = result.summary
-    profile_json["clinical_advisor_profile_version"] = new_version
-
-    profile.profile_json = profile_json
-    profile.updated_at = datetime.datetime.utcnow()
-
-    db.commit()
-
-    log_admin_action(
-        action="regenerate_injection_summary",
-        actor=admin.username,
-        practice_id=practice_id,
-        details={
-            "new_version": new_version,
-            "estimated_tokens": result.estimated_tokens
-        }
-    )
-
-    return ClinicalConfigUpdateResponse(
-        status="success",
-        message="Injection summary regenerated successfully",
-        practice_id=practice_id,
-        profile_version=new_version,
-        injection_preview=result.summary,
-        estimated_tokens=result.estimated_tokens
-    )
 

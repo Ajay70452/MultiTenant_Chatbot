@@ -125,7 +125,7 @@ async def get_agent_response(
     Returns:
         Dict with response_text, updated_details, user_confirmed, next_stage
     """
-    llm = ChatOpenAI(model="gpt-4-turbo", temperature=0, openai_api_key=OPENAI_API_KEY)
+    llm = ChatOpenAI(model="gpt-5.1", temperature=0, openai_api_key=OPENAI_API_KEY)
     structured_llm = llm.with_structured_output(PatientAgentResponse, method='function_calling')
 
     prompt = ChatPromptTemplate.from_messages([
@@ -175,7 +175,7 @@ async def get_clinical_response(
     user_message: str,
     practice_profile: Optional[dict] = None,
     conversation_history: Optional[List[dict]] = None,
-    image_base64: Optional[str] = None,
+    images_base64: Optional[List[str]] = None,
     rag_context: Optional[str] = None,
     clinic_name: Optional[str] = None
 ) -> dict:
@@ -189,40 +189,54 @@ async def get_clinical_response(
     - NO state machine - stateless, free-flow conversation
     - NO stage transitions
     - Uses practice profile + RAG context from Pinecone
-    - Supports multi-modal input (text + images)
+    - Supports multi-modal input (text + multiple images)
 
     Args:
         user_message: The doctor's question or message
         practice_profile: The doctor's practice profile JSON
         conversation_history: List of previous messages (stateless - client provides)
-        image_base64: Optional Base64-encoded image for analysis
+        images_base64: Optional list of Base64-encoded images for analysis
         rag_context: Retrieved context from Pinecone RAG
         clinic_name: The name of the clinic/practice
 
     Returns:
         Dict with response_text, confidence_level, requires_referral, safety_warnings
     """
-    # Validate and process image if provided
-    has_valid_image = False
-    normalized_image = None
+    # Validate and process images if provided
+    normalized_images = []
+    _debug_info = {
+        "images_received": len(images_base64) if images_base64 else 0,
+        "images_validated": 0,
+        "validation_errors": [],
+        "image_prefixes": [],
+    }
 
-    if image_base64:
-        is_valid, mime_type, error_msg = validate_base64_image(image_base64)
-        if is_valid:
-            has_valid_image = True
-            normalized_image = normalize_image_data(image_base64)
-            image_size = get_image_size_kb(image_base64)
-            logger.info(
-                f"Processing clinical request with image",
-                extra={
-                    "mime_type": mime_type,
-                    "image_size_kb": image_size
-                }
+    if images_base64:
+        for i, image_base64 in enumerate(images_base64):
+            # Log prefix for debugging (first 80 chars only)
+            _debug_info["image_prefixes"].append(
+                image_base64[:80] if image_base64 else "<empty>"
             )
-        else:
-            logger.warning(f"Invalid image data provided: {error_msg}")
-            # Continue without image rather than failing
-            has_valid_image = False
+            is_valid, mime_type, error_msg = validate_base64_image(image_base64)
+            if is_valid:
+                normalized = normalize_image_data(image_base64)
+                normalized_images.append(normalized)
+                image_size = get_image_size_kb(image_base64)
+                logger.info(
+                    f"Processing clinical request with image {i+1}/{len(images_base64)}",
+                    extra={
+                        "mime_type": mime_type,
+                        "image_size_kb": image_size
+                    }
+                )
+            else:
+                _debug_info["validation_errors"].append(
+                    f"Image {i+1}: {error_msg}"
+                )
+                logger.warning(f"Invalid image data for image {i+1}: {error_msg}")
+
+    _debug_info["images_validated"] = len(normalized_images)
+    has_valid_image = len(normalized_images) > 0
 
     # Build the clinical system prompt with practice profile and RAG context
     system_prompt = build_clinical_prompt(
@@ -234,18 +248,18 @@ async def get_clinical_response(
 
     # Choose model based on whether we have a valid image
     if has_valid_image:
-        # Use GPT-4o for vision capabilities
+        # Use GPT-5.2 for vision capabilities
         llm = ChatOpenAI(
-            model="gpt-4o",
+            model="gpt-5.2",
             temperature=0.1,
             openai_api_key=OPENAI_API_KEY,
             max_tokens=4096  # Allow longer responses for detailed clinical analysis
         )
         use_structured = False
     else:
-        # Text-only: Use GPT-4-turbo with structured output
+        # Text-only: Use GPT-5.2 with structured output
         llm = ChatOpenAI(
-            model="gpt-4-turbo",
+            model="gpt-5.2",
             temperature=0.1,
             openai_api_key=OPENAI_API_KEY
         )
@@ -298,10 +312,10 @@ async def get_clinical_response(
                     else:
                         messages.append(AIMessage(content=content))
 
-            # Build multimodal content with text and image
+            # Build multimodal content with text and images
             multimodal_content = build_multimodal_content(
                 text=user_message,
-                images=[normalized_image] if normalized_image else None,
+                images=normalized_images if normalized_images else None,
                 image_detail="high"  # Use high detail for clinical images
             )
             messages.append(HumanMessage(content=multimodal_content))
@@ -312,16 +326,19 @@ async def get_clinical_response(
             # Parse unstructured response and extract metadata
             response_dict = _parse_clinical_response(raw_result.content)
 
+        _debug_info["vision_path_used"] = not use_structured
         logger.info(
             f"Clinical response generated",
             extra={
                 "confidence_level": response_dict.get("confidence_level"),
                 "requires_referral": response_dict.get("requires_referral"),
                 "has_image": has_valid_image,
-                "safety_warnings_count": len(response_dict.get("safety_warnings", []))
+                "safety_warnings_count": len(response_dict.get("safety_warnings", [])),
+                "debug_info": _debug_info
             }
         )
 
+        response_dict["_debug"] = _debug_info
         return response_dict
 
     except Exception as e:
@@ -330,7 +347,8 @@ async def get_clinical_response(
             "response_text": "I apologize, but I'm having difficulty processing your request. Please try rephrasing your question or contact support if the issue persists.",
             "confidence_level": "low",
             "requires_referral": False,
-            "safety_warnings": ["Response generated after error - please verify independently"]
+            "safety_warnings": ["Response generated after error - please verify independently"],
+            "_debug": _debug_info
         }
 
 
@@ -409,7 +427,7 @@ async def get_agent_response_stream(
 
     This is for the Patient Concierge agent (Door 1).
     """
-    llm = ChatOpenAI(model="gpt-4-turbo", temperature=0, openai_api_key=OPENAI_API_KEY)
+    llm = ChatOpenAI(model="gpt-5.1", temperature=0, openai_api_key=OPENAI_API_KEY)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", PATIENT_SYSTEM_PROMPT),
@@ -484,7 +502,7 @@ class PromptFactory:
                 user_message=user_message,
                 practice_profile=kwargs.get("practice_profile"),
                 conversation_history=kwargs.get("conversation_history"),
-                image_base64=kwargs.get("image_base64"),
+                images_base64=kwargs.get("images_base64"),
                 rag_context=kwargs.get("rag_context"),
                 clinic_name=kwargs.get("clinic_name")
             )

@@ -309,9 +309,6 @@ class ClinicalConfigResponse(BaseModel):
     practice_name: str
     config: Optional[ClinicalAdvisorConfig] = None
     profile_version: int = 0
-    has_cached_summary: bool = False
-    injection_preview: Optional[str] = None
-    estimated_tokens: Optional[int] = None
     updated_at: Optional[datetime] = None
 
 
@@ -326,5 +323,3 @@ class ClinicalConfigUpdateResponse(BaseModel):
     message: str
     practice_id: str
     profile_version: int
-    injection_preview: str
-    estimated_tokens: int

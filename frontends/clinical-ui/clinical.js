@@ -54,6 +54,9 @@
         // Supported image types
         supportedImageTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
 
+        // Maximum images per message
+        maxImagesPerMessage: 5,
+
         // Max conversation history to send (for context)
         maxHistoryLength: 20,
     };
@@ -72,15 +75,22 @@
         // Conversation history (maintained client-side since endpoint is stateless)
         conversationHistory: [],
 
-        // Currently attached image (Base64)
-        attachedImage: null,
-        attachedImageName: null,
+        // Currently attached images (array of {id, base64, name})
+        attachedImages: [],
 
         // Loading state
         isLoading: false,
 
         // Connection status
         isConnected: false,
+
+        // Session management
+        currentSessionId: null,
+        sessions: [],
+        sessionsLoaded: false,
+
+        // Agent display name (customizable per practice)
+        agentName: 'Clinical Advisor',
     };
 
     // ==========================================================================
@@ -102,9 +112,9 @@
 
             // Image handling
             imagePreviewArea: document.getElementById('image-preview-area'),
-            imagePreview: document.getElementById('image-preview'),
-            imageName: document.getElementById('image-name'),
-            removeImageBtn: document.getElementById('remove-image-btn'),
+            imagePreviewGrid: document.getElementById('image-preview-grid'),
+            previewCount: document.getElementById('preview-count'),
+            clearAllImagesBtn: document.getElementById('clear-all-images-btn'),
             attachBtn: document.getElementById('attach-btn'),
             imageInput: document.getElementById('image-input'),
 
@@ -117,6 +127,16 @@
             metadataModal: document.getElementById('metadata-modal'),
             metadataBody: document.getElementById('metadata-body'),
             closeModalBtn: document.getElementById('close-modal-btn'),
+
+            // Session sidebar
+            sessionsSidebar: document.getElementById('sessions-sidebar'),
+            sidebarOverlay: document.getElementById('sidebar-overlay'),
+            sessionsList: document.getElementById('sessions-list'),
+            newChatBtn: document.getElementById('new-chat-btn'),
+            sidebarToggleBtn: document.getElementById('sidebar-toggle-btn'),
+            sessionContextMenu: document.getElementById('session-context-menu'),
+            ctxRename: document.getElementById('ctx-rename'),
+            ctxDelete: document.getElementById('ctx-delete'),
         };
     }
 
@@ -361,6 +381,12 @@
                 hideAuthError();
                 updateConnectionStatus('connected', `Connected: ${data.clinic_name || state.clientInfo?.clinicName || 'Practice'}`);
 
+                // Apply custom agent name if set in practice profile
+                if (data.agent_name) {
+                    state.agentName = data.agent_name;
+                    applyAgentName(data.agent_name);
+                }
+
                 if (!data.has_profile || !data.profile_configured) {
                     appendSystemMessage('Note: Your practice profile is not yet configured. Responses will use general clinical guidelines.');
                 }
@@ -378,6 +404,22 @@
             showAuthError('Unable to connect to the server. Please check your network connection.');
             return false;
         }
+    }
+
+    /**
+     * Apply custom agent name to all UI elements.
+     */
+    function applyAgentName(name) {
+        // Header title
+        const h1 = document.querySelector('.header-title h1');
+        if (h1) h1.textContent = name;
+
+        // Page title
+        document.title = `${name} - Practice Brain`;
+
+        // Typing indicator
+        const typingText = document.querySelector('.typing-text');
+        if (typingText) typingText.textContent = `${name} is thinking...`;
     }
 
     /**
@@ -487,15 +529,32 @@
         scrollToBottom();
     }
 
-    function appendImageMessage(imageSrc, imageName) {
+    function appendImageMessage(images) {
+        // images: array of {base64, name}
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message user image-message';
-        messageDiv.innerHTML = `
-            <div class="attached-image">
-                <img src="${imageSrc}" alt="Attached: ${escapeHtml(imageName)}">
-                <span class="image-label">${escapeHtml(imageName)}</span>
-            </div>
-        `;
+
+        const container = document.createElement('div');
+        container.className = 'attached-image';
+
+        for (const img of images) {
+            const item = document.createElement('div');
+            item.className = 'attached-image-item';
+
+            const imgEl = document.createElement('img');
+            imgEl.src = img.base64;
+            imgEl.alt = 'Attached: ' + escapeHtml(img.name);
+
+            const label = document.createElement('span');
+            label.className = 'image-label';
+            label.textContent = img.name;
+
+            item.appendChild(imgEl);
+            item.appendChild(label);
+            container.appendChild(item);
+        }
+
+        messageDiv.appendChild(container);
         elements.messagesContainer.appendChild(messageDiv);
         scrollToBottom();
     }
@@ -551,54 +610,125 @@
     // ==========================================================================
 
     function handleImageSelect(event) {
-        const file = event.target.files[0];
-        if (!file) return;
+        const files = Array.from(event.target.files);
+        if (!files.length) return;
 
-        // Validate file type
-        if (!CONFIG.supportedImageTypes.includes(file.type)) {
-            appendSystemMessage(`Unsupported image type. Please use: ${CONFIG.supportedImageTypes.join(', ')}`);
+        // Check total count limit
+        const remaining = CONFIG.maxImagesPerMessage - state.attachedImages.length;
+        if (remaining <= 0) {
+            appendSystemMessage(`Maximum ${CONFIG.maxImagesPerMessage} images per message.`);
+            event.target.value = '';
             return;
         }
 
-        // Validate file size
-        if (file.size > CONFIG.maxImageSize) {
-            appendSystemMessage(`Image too large. Maximum size: ${CONFIG.maxImageSize / (1024 * 1024)}MB`);
-            return;
+        const filesToProcess = files.slice(0, remaining);
+        if (filesToProcess.length < files.length) {
+            appendSystemMessage(`Only ${remaining} more image(s) can be added (limit: ${CONFIG.maxImagesPerMessage}).`);
         }
 
-        // Read and convert to Base64
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            state.attachedImage = e.target.result;
-            state.attachedImageName = file.name;
-            showImagePreview(e.target.result, file.name);
-        };
-        reader.onerror = () => {
-            appendSystemMessage('Failed to read image file. Please try again.');
-        };
-        reader.readAsDataURL(file);
+        // Validate and read files in parallel
+        const readPromises = filesToProcess.map(file => {
+            // Validate file type
+            if (!CONFIG.supportedImageTypes.includes(file.type)) {
+                appendSystemMessage(`Skipped "${file.name}": unsupported type. Use ${CONFIG.supportedImageTypes.join(', ')}`);
+                return null;
+            }
+            // Validate file size
+            if (file.size > CONFIG.maxImageSize) {
+                appendSystemMessage(`Skipped "${file.name}": too large. Maximum ${CONFIG.maxImageSize / (1024 * 1024)}MB.`);
+                return null;
+            }
+
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    resolve({
+                        id: crypto.randomUUID(),
+                        base64: e.target.result,
+                        name: file.name
+                    });
+                };
+                reader.onerror = () => {
+                    appendSystemMessage(`Failed to read "${file.name}".`);
+                    resolve(null);
+                };
+                reader.readAsDataURL(file);
+            });
+        }).filter(Boolean);
+
+        Promise.all(readPromises).then(results => {
+            const valid = results.filter(Boolean);
+            state.attachedImages.push(...valid);
+            renderImagePreviews();
+            event.target.value = '';
+        });
     }
 
-    function showImagePreview(imageSrc, imageName) {
-        elements.imagePreview.src = imageSrc;
-        elements.imageName.textContent = imageName;
+    function renderImagePreviews() {
+        const count = state.attachedImages.length;
+
+        if (count === 0) {
+            elements.imagePreviewArea.style.display = 'none';
+            elements.attachBtn.classList.remove('has-image');
+            return;
+        }
+
         elements.imagePreviewArea.style.display = 'block';
         elements.attachBtn.classList.add('has-image');
+        elements.previewCount.textContent = `${count} of ${CONFIG.maxImagesPerMessage} images`;
+
+        // Clear and rebuild grid
+        elements.imagePreviewGrid.innerHTML = '';
+        for (const img of state.attachedImages) {
+            const card = document.createElement('div');
+            card.className = 'image-preview-card';
+
+            const thumb = document.createElement('img');
+            thumb.src = img.base64;
+            thumb.alt = img.name;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'image-preview-card-name';
+            nameSpan.textContent = img.name;
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'image-preview-card-remove';
+            removeBtn.title = 'Remove image';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.addEventListener('click', () => removeImage(img.id));
+
+            card.appendChild(thumb);
+            card.appendChild(nameSpan);
+            card.appendChild(removeBtn);
+            elements.imagePreviewGrid.appendChild(card);
+        }
+
+        // Disable attach button when at limit
+        if (count >= CONFIG.maxImagesPerMessage) {
+            elements.attachBtn.disabled = true;
+            elements.attachBtn.title = `Maximum ${CONFIG.maxImagesPerMessage} images`;
+        } else {
+            elements.attachBtn.disabled = false;
+            elements.attachBtn.title = 'Attach X-ray or clinical image';
+        }
+    }
+
+    function removeImage(imageId) {
+        state.attachedImages = state.attachedImages.filter(img => img.id !== imageId);
+        renderImagePreviews();
     }
 
     function clearImageAttachment() {
-        state.attachedImage = null;
-        state.attachedImageName = null;
+        state.attachedImages = [];
         elements.imageInput.value = '';
-        elements.imagePreviewArea.style.display = 'none';
-        elements.attachBtn.classList.remove('has-image');
+        renderImagePreviews();
     }
 
     // ==========================================================================
     // API Communication
     // ==========================================================================
 
-    async function sendMessage(message, imageBase64 = null) {
+    async function sendMessage(message, images = []) {
         if (!state.isConnected) {
             appendSystemMessage('Not connected. Please check your authentication.');
             return;
@@ -613,22 +743,27 @@
 
         setLoading(true);
 
+        // Auto-generate session ID if none exists (first message in a new chat)
+        if (!state.currentSessionId) {
+            state.currentSessionId = crypto.randomUUID();
+        }
+
         // Show user message
         appendMessage('user', message);
 
-        // Show attached image if present
-        if (imageBase64 && state.attachedImageName) {
-            appendImageMessage(imageBase64, state.attachedImageName);
+        // Show attached images if present
+        if (images.length > 0) {
+            appendImageMessage(images);
         }
 
         try {
             const payload = {
                 message: message,
-                conversation_history: state.conversationHistory.slice(0, -1), // Exclude the message we just added
+                session_id: state.currentSessionId,
             };
 
-            if (imageBase64) {
-                payload.image_base64 = imageBase64;
+            if (images.length > 0) {
+                payload.images_base64 = images.map(i => i.base64);
             }
 
             const response = await fetch(`${CONFIG.apiBaseUrl}/chat`, {
@@ -659,9 +794,13 @@
                 requires_referral: data.requires_referral,
                 safety_warnings: data.safety_warnings || [],
                 has_image: data.has_image,
+                image_count: data.image_count || 0,
             };
 
             appendMessage('assistant', data.response, metadata);
+
+            // Refresh session list in background
+            loadSessions();
 
         } catch (error) {
             console.error('Failed to send message:', error);
@@ -698,7 +837,7 @@
             </div>
             <div class="meta-item">
                 <span class="meta-label">Image Analyzed</span>
-                <span class="meta-value">${metadata.has_image ? 'Yes' : 'No'}</span>
+                <span class="meta-value">${metadata.has_image ? (metadata.image_count > 1 ? metadata.image_count + ' images' : 'Yes') : 'No'}</span>
             </div>
             ${metadata.safety_warnings?.length > 0 ? `
                 <div class="meta-item warnings">
@@ -720,6 +859,244 @@
     }
 
     // ==========================================================================
+    // Session Management
+    // ==========================================================================
+
+    async function loadSessions() {
+        const authToken = getAuthToken();
+        if (!authToken) return;
+
+        try {
+            const response = await fetch(`${CONFIG.apiBaseUrl}/sessions`, {
+                headers: { 'X-Client-Token': authToken }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                state.sessions = data.sessions;
+                state.sessionsLoaded = true;
+                renderSessionList();
+            }
+        } catch (error) {
+            console.error('Failed to load sessions:', error);
+        }
+    }
+
+    async function loadSession(sessionId) {
+        const authToken = getAuthToken();
+        if (!authToken) return;
+
+        try {
+            const response = await fetch(`${CONFIG.apiBaseUrl}/sessions/${sessionId}`, {
+                headers: { 'X-Client-Token': authToken }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                state.currentSessionId = sessionId;
+                state.conversationHistory = [];
+
+                // Clear chat area
+                elements.messagesContainer.innerHTML = '';
+
+                // Render each message from history
+                for (const msg of data.messages) {
+                    const metadata = msg.metadata || null;
+                    appendMessage(
+                        msg.role === 'user' ? 'user' : 'assistant',
+                        msg.content,
+                        msg.role === 'assistant' ? metadata : null
+                    );
+                }
+
+                // If no messages, show welcome
+                if (data.messages.length === 0) {
+                    showWelcomeMessage();
+                }
+
+                // Highlight active session in sidebar
+                renderSessionList();
+
+                // Close sidebar on mobile
+                closeSidebar();
+
+                elements.messageInput.focus();
+            }
+        } catch (error) {
+            console.error('Failed to load session:', error);
+            appendSystemMessage('Failed to load chat session. Please try again.');
+        }
+    }
+
+    function startNewChat() {
+        state.currentSessionId = null; // Will be generated on first message
+        state.conversationHistory = [];
+        elements.messagesContainer.innerHTML = '';
+        showWelcomeMessage();
+        renderSessionList();
+        closeSidebar();
+        elements.messageInput.focus();
+    }
+
+    async function renameSession(sessionId, newTitle) {
+        const authToken = getAuthToken();
+        if (!authToken) return;
+
+        try {
+            const response = await fetch(`${CONFIG.apiBaseUrl}/sessions/${sessionId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Client-Token': authToken
+                },
+                body: JSON.stringify({ title: newTitle })
+            });
+            if (response.ok) {
+                await loadSessions();
+            }
+        } catch (error) {
+            console.error('Failed to rename session:', error);
+        }
+    }
+
+    async function deleteSession(sessionId) {
+        const authToken = getAuthToken();
+        if (!authToken) return;
+
+        try {
+            const response = await fetch(`${CONFIG.apiBaseUrl}/sessions/${sessionId}`, {
+                method: 'DELETE',
+                headers: { 'X-Client-Token': authToken }
+            });
+            if (response.ok) {
+                if (state.currentSessionId === sessionId) {
+                    startNewChat();
+                }
+                await loadSessions();
+            }
+        } catch (error) {
+            console.error('Failed to delete session:', error);
+        }
+    }
+
+    function renderSessionList() {
+        if (!elements.sessionsList) return;
+        elements.sessionsList.innerHTML = '';
+
+        if (state.sessions.length === 0) {
+            elements.sessionsList.innerHTML = '<div class="sessions-empty">No conversations yet</div>';
+            return;
+        }
+
+        for (const session of state.sessions) {
+            const item = document.createElement('div');
+            item.className = 'session-item' + (session.session_id === state.currentSessionId ? ' active' : '');
+            item.dataset.sessionId = session.session_id;
+
+            const info = document.createElement('div');
+            info.className = 'session-item-info';
+
+            const titleSpan = document.createElement('div');
+            titleSpan.className = 'session-item-title';
+            titleSpan.textContent = session.title;
+
+            const timeSpan = document.createElement('div');
+            timeSpan.className = 'session-item-time';
+            timeSpan.textContent = formatRelativeTime(session.updated_at);
+
+            info.appendChild(titleSpan);
+            info.appendChild(timeSpan);
+
+            const menuBtn = document.createElement('button');
+            menuBtn.className = 'session-item-menu';
+            menuBtn.innerHTML = '&#8942;'; // vertical ellipsis
+            menuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showSessionContextMenu(e, session.session_id);
+            });
+
+            item.appendChild(info);
+            item.appendChild(menuBtn);
+
+            item.addEventListener('click', () => loadSession(session.session_id));
+            elements.sessionsList.appendChild(item);
+        }
+    }
+
+    function formatRelativeTime(isoString) {
+        const date = new Date(isoString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        return date.toLocaleDateString();
+    }
+
+    // --- Sidebar toggle ---
+
+    function toggleSidebar() {
+        elements.sessionsSidebar.classList.toggle('open');
+        elements.sidebarOverlay.classList.toggle('open');
+    }
+
+    function closeSidebar() {
+        elements.sessionsSidebar.classList.remove('open');
+        elements.sidebarOverlay.classList.remove('open');
+    }
+
+    // --- Context menu ---
+
+    let activeContextSessionId = null;
+
+    function showSessionContextMenu(event, sessionId) {
+        activeContextSessionId = sessionId;
+        const menu = elements.sessionContextMenu;
+        menu.style.display = 'block';
+        menu.style.left = event.clientX + 'px';
+        menu.style.top = event.clientY + 'px';
+
+        // Keep menu in viewport
+        const rect = menu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+            menu.style.left = (window.innerWidth - rect.width - 8) + 'px';
+        }
+        if (rect.bottom > window.innerHeight) {
+            menu.style.top = (window.innerHeight - rect.height - 8) + 'px';
+        }
+    }
+
+    function hideSessionContextMenu() {
+        elements.sessionContextMenu.style.display = 'none';
+        activeContextSessionId = null;
+    }
+
+    function promptRename() {
+        if (!activeContextSessionId) return;
+        const sid = activeContextSessionId;
+        hideSessionContextMenu();
+
+        const session = state.sessions.find(s => s.session_id === sid);
+        const newTitle = prompt('Rename session:', session?.title || '');
+        if (newTitle && newTitle.trim()) {
+            renameSession(sid, newTitle.trim());
+        }
+    }
+
+    function promptDelete() {
+        if (!activeContextSessionId) return;
+        const sid = activeContextSessionId;
+        hideSessionContextMenu();
+
+        if (confirm('Delete this chat session? This cannot be undone.')) {
+            deleteSession(sid);
+        }
+    }
+
+    // ==========================================================================
     // Input Handling
     // ==========================================================================
 
@@ -727,10 +1104,16 @@
         event.preventDefault();
 
         const message = elements.messageInput.value.trim();
-        if (!message && !state.attachedImage) return;
+        if (!message && state.attachedImages.length === 0) return;
 
-        // Send message with optional image
-        sendMessage(message || 'Please analyze this image.', state.attachedImage);
+        // Capture images before clearing
+        const imagesToSend = [...state.attachedImages];
+
+        // Send message with optional images
+        sendMessage(
+            message || 'Please analyze ' + (imagesToSend.length === 1 ? 'this image.' : 'these images.'),
+            imagesToSend
+        );
 
         // Clear input
         elements.messageInput.value = '';
@@ -766,7 +1149,7 @@
                     <path d="M8 17h8"/>
                 </svg>
             </div>
-            <h2>Welcome to Clinical Advisor</h2>
+            <h2>Welcome to ${escapeHtml(state.agentName)}</h2>
             <p>Your AI-powered clinical colleague, personalized to your practice philosophy.</p>
             <div class="welcome-suggestions">
                 <span class="suggestion" data-message="What treatment options should I consider for moderate periodontitis?">Treatment for periodontitis</span>
@@ -802,11 +1185,33 @@
 
         elements.attachBtn.addEventListener('click', () => elements.imageInput.click());
         elements.imageInput.addEventListener('change', handleImageSelect);
-        elements.removeImageBtn.addEventListener('click', clearImageAttachment);
+        elements.clearAllImagesBtn.addEventListener('click', clearImageAttachment);
 
         elements.closeModalBtn.addEventListener('click', hideMetadataModal);
         elements.metadataModal.addEventListener('click', (e) => {
             if (e.target === elements.metadataModal) hideMetadataModal();
+        });
+
+        // Session sidebar listeners
+        if (elements.newChatBtn) {
+            elements.newChatBtn.addEventListener('click', startNewChat);
+        }
+        if (elements.sidebarToggleBtn) {
+            elements.sidebarToggleBtn.addEventListener('click', toggleSidebar);
+        }
+        if (elements.sidebarOverlay) {
+            elements.sidebarOverlay.addEventListener('click', closeSidebar);
+        }
+        if (elements.ctxRename) {
+            elements.ctxRename.addEventListener('click', promptRename);
+        }
+        if (elements.ctxDelete) {
+            elements.ctxDelete.addEventListener('click', promptDelete);
+        }
+        document.addEventListener('click', (e) => {
+            if (elements.sessionContextMenu && !elements.sessionContextMenu.contains(e.target)) {
+                hideSessionContextMenu();
+            }
         });
 
         // Show welcome message
@@ -816,6 +1221,8 @@
         const connected = await checkConnection();
 
         if (connected) {
+            // Load session list
+            await loadSessions();
             elements.messageInput.focus();
         }
     }

@@ -4,15 +4,9 @@ Clinical Advisor Prompt (Door 2)
 This prompt defines the personality and behavior for the doctor-facing
 Clinical Advisor assistant. It prioritizes patient safety and references
 the doctor's practice philosophy.
-
-The prompt is assembled from three parts (per guidance docs):
-1. Global Clinical Advisor System Prompt (rules) - versioned template
-2. Global Policy Blocks - citations, standards authority, red flags, bias governance
-3. Practice Profile Injection - generated from clinical_advisor_config
 """
 
 from typing import Optional
-from src.core.prompts.injection_builder import build_profile_injection, get_cached_or_build_injection
 
 
 CLINICAL_SYSTEM_PROMPT = """
@@ -117,46 +111,16 @@ def _format_practice_profile(profile_json: Optional[dict], clinic_name: Optional
     """
     Convert the practice profile JSON into a readable text block.
 
-    This function now checks for clinical_advisor_config and uses the
-    injection builder for token-budgeted output. Falls back to legacy
-    formatting for profiles without clinical_advisor_config.
-
     Args:
         profile_json: The practice profile dictionary from the database
         clinic_name: The name of the clinic/practice
 
     Returns:
-        A formatted string describing the doctor's philosophy (300-800 tokens)
+        A formatted string describing the doctor's philosophy
     """
     if not profile_json:
         return "No specific practice philosophy configured. Using AGD-informed general guidance with conservative defaults."
 
-    # Check if clinical_advisor_config exists (new format)
-    if "clinical_advisor_config" in profile_json:
-        # Use the new injection builder with caching support
-        injection_summary, was_rebuilt = get_cached_or_build_injection(
-            profile_json=profile_json,
-            clinic_name=clinic_name
-        )
-        return injection_summary
-
-    # Legacy format: fall back to old formatting logic
-    return _format_legacy_profile(profile_json, clinic_name)
-
-
-def _format_legacy_profile(profile_json: dict, clinic_name: Optional[str] = None) -> str:
-    """
-    Legacy profile formatting for profiles without clinical_advisor_config.
-
-    This preserves backward compatibility with existing profile structures.
-
-    Args:
-        profile_json: The practice profile dictionary (legacy format)
-        clinic_name: The name of the clinic/practice
-
-    Returns:
-        A formatted string describing the doctor's philosophy
-    """
     sections = []
 
     # Add clinic name at the beginning if provided
